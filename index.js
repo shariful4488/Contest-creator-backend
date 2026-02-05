@@ -2,13 +2,15 @@ const express = require('express');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
 require('dotenv').config();
-const port = process.env.PORT || 3000;
 
 const app = express();
+const port = process.env.PORT || 3000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
+// MongoDB Connection String
 const uri = "mongodb+srv://contest_create:oIYsQqRR1MGTcsKA@itnabil.agyee9s.mongodb.net/?appName=ItNabil";
 
 const client = new MongoClient(uri, {
@@ -21,40 +23,133 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
+    // Database Collections
     const database = client.db("contest_create");
     const usersCollection = database.collection("users");
     const contestCollection = database.collection("contests");
     const participationCollection = database.collection("participations");
 
-    // --- ১. রেজিস্ট্রেশন চেক API (Details পেজের জন্য খুবই জরুরি) ---
-    app.get('/is-registered', async (req, res) => {
-        const { email, contestId } = req.query;
-        if(!email || !contestId) return res.send({ isRegistered: false });
-        
-        const query = { userEmail: email, contestId: contestId };
-        const alreadyJoined = await participationCollection.findOne(query);
-        res.send({ isRegistered: !!alreadyJoined });
-    });
+    // ============================================================
+    // 1. GENERAL USER & AUTHENTICATION ROUTES
+    // ============================================================
 
-    // --- ২. ইউজার সেভ এবং রোল চেক ---
+    /**
+     * @route POST /users
+     * @desc Save user information upon login/registration
+     */
     app.post('/users', async (req, res) => {
         const user = req.body;
         const query = { email: user.email };
         const existingUser = await usersCollection.findOne(query);
         if (existingUser) return res.send({ message: 'User already exists', insertedId: null });
-        const result = await usersCollection.insertOne(user);
+        
+        // Default role is set to 'user'
+        const result = await usersCollection.insertOne({ ...user, role: 'user' });
         res.send(result);
     });
 
+    /**
+     * @route GET /users/role/:email
+     * @desc Get the specific role of a user to persist state on refresh
+     */
     app.get('/users/role/:email', async (req, res) => {
         const email = req.params.email;
         const user = await usersCollection.findOne({ email });
         res.send({ role: user?.role || 'user' });
     });
 
-    // --- ৩. পপুলার কন্টেস্টস (Accepted হওয়া শর্ত) ---
+
+    // ============================================================
+    // 2. ADMIN ONLY ROUTES (Management)
+    // ============================================================
+
+    /**
+     * @route GET /users
+     * @desc Fetch all users for the Admin Dashboard
+     */
+    app.get('/users', async (req, res) => {
+        const result = await usersCollection.find().toArray();
+        res.send(result);
+    });
+
+    /**
+     * @route PATCH /users/role/:id
+     * @desc Update user roles (Admin, Creator, or User)
+     */
+    app.patch('/users/role/:id', async (req, res) => {
+        const id = req.params.id;
+        const { role } = req.body;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = { $set: { role: role } };
+        const result = await usersCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+    });
+
+    /**
+     * @route GET /all-contests
+     * @desc Admin view to see all contests regardless of status
+     */
+    app.get('/all-contests', async (req, res) => {
+        const result = await contestCollection.find().toArray();
+        res.send(result);
+    });
+
+    /**
+     * @route PATCH /contests/status/:id
+     * @desc Admin approval for contests (Pending -> Accepted)
+     */
+    app.patch('/contests/status/:id', async (req, res) => {
+        const id = req.params.id;
+        const { status } = req.body;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = { $set: { status: status } };
+        const result = await contestCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+    });
+
+
+    // ============================================================
+    // 3. CREATOR / MANAGER ROUTES
+    // ============================================================
+
+    /**
+     * @route POST /contests
+     * @desc Creators can submit new contests for approval
+     */
+    app.post('/contests', async (req, res) => {
+        const contest = req.body;
+        const newContest = {
+            ...contest,
+            participationCount: 0,
+            status: 'Pending', 
+            createdAt: new Date()
+        };
+        const result = await contestCollection.insertOne(newContest);
+        res.send(result);
+    });
+
+    /**
+     * @route GET /contests
+     * @desc Fetch contests created by a specific creator
+     */
+    app.get('/contests', async (req, res) => {
+        const email = req.query.email;
+        let query = {};
+        if (email) query = { creatorEmail: email };
+        const result = await contestCollection.find(query).toArray();
+        res.send(result);
+    });
+
+
+    // ============================================================
+    // 4. PARTICIPANT / PUBLIC ROUTES
+    // ============================================================
+
+    /**
+     * @route GET /popular-contests
+     * @desc Fetch top 6 accepted contests based on participation
+     */
     app.get('/popular-contests', async (req, res) => {
-        // এখানে ফিল্টার Accepted রাখা হয়েছে, তাই ডাটাবেসে status: 'Accepted' থাকতে হবে
         const result = await contestCollection.find({ status: 'Accepted' })
             .sort({ participationCount: -1 })
             .limit(6)
@@ -62,75 +157,45 @@ async function run() {
         res.send(result);
     });
 
-    // --- ৪. নির্দিষ্ট কন্টেস্ট ডিটেইলস ---
-    app.get('/contests/:id', async (req, res) => {
-        const id = req.params.id;
-        try {
-            const query = { _id: new ObjectId(id) };
-            const result = await contestCollection.findOne(query);
-            res.send(result);
-        } catch (error) {
-            res.status(400).send({ message: "Invalid ID format" });
-        }
-    });
-
-    // --- ৫. নতুন কন্টেস্ট যোগ করা ---
-    app.post('/contests', async (req, res) => {
-        const contest = req.body;
-        const newContest = {
-            ...contest,
-            participationCount: 0,
-            status: 'Pending', // অ্যাডমিন এপ্রুভ না করা পর্যন্ত এটি Pending থাকবে
-            createdAt: new Date()
-        }
-        const result = await contestCollection.insertOne(newContest);
-        res.send(result);
-    });
-
-    // --- ৬. পেমেন্ট ও পার্টিসিপেশন হ্যান্ডলার (Transaction based) ---
+    /**
+     * @route POST /participations
+     * @desc Register a user for a contest after payment
+     */
     app.post('/participations', async (req, res) => {
         const data = req.body;
         
-        // ডুপ্লিকেট রেজিস্ট্রেশন চেক
-        const alreadyJoined = await participationCollection.findOne({ 
+        // Prevent duplicate registrations
+        const existing = await participationCollection.findOne({ 
             userEmail: data.userEmail, 
             contestId: data.contestId 
         });
-        
-        if(alreadyJoined) return res.status(400).send({ message: "Already Registered" });
+        if(existing) return res.status(400).send({ message: "Already Registered" });
 
         const result = await participationCollection.insertOne({
             ...data,
-            submissionStatus: 'Pending', // টাস্ক সাবমিটের জন্য স্ট্যাটাস
+            submissionStatus: 'Pending',
             paymentDate: new Date()
         });
         
-        // কন্টেস্টের পার্টিসিপেন্ট সংখ্যা আপডেট
+        // Increment global participation count for the contest
         const filter = { _id: new ObjectId(data.contestId) };
-        const updateDoc = { $inc: { participationCount: 1 } };
-        await contestCollection.updateOne(filter, updateDoc);
+        await contestCollection.updateOne(filter, { $inc: { participationCount: 1 } });
         
         res.send(result);
     });
 
-    // --- ৭. কন্টেস্ট ডিলিট ও আপডেট (যা আপনার ছিল) ---
-    app.delete('/contests/:id', async (req, res) => {
-        const id = req.params.id;
-        const result = await contestCollection.deleteOne({ _id: new ObjectId(id) });
-        res.send(result);
-    });
-
-    console.log("MongoDB Connected Successfully!");
+    console.log("Database Operational: Connected to MongoDB");
   } catch (error) {
-    console.error("Error connecting to MongoDB:", error);
+    console.error("Database Connection Error:", error);
   }
 }
+
 run().catch(console.dir);
 
 app.get('/', (req, res) => {
-    res.send('ContestHub Server is Running...');
+    res.send('ContestHub API is active.');
 });
 
 app.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
+    console.log(`Server running on port ${port}`);
 });
