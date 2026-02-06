@@ -1,201 +1,245 @@
 const express = require('express');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection String
-const uri = "mongodb+srv://contest_create:oIYsQqRR1MGTcsKA@itnabil.agyee9s.mongodb.net/?appName=ItNabil";
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@itnabil.agyee9s.mongodb.net/?appName=ItNabil`;
 
 const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  }
+    serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+    }
 });
 
 async function run() {
-  try {
-    // Database Collections
-    const database = client.db("contest_create");
-    const usersCollection = database.collection("users");
-    const contestCollection = database.collection("contests");
-    const participationCollection = database.collection("participations");
+    try {
+        const database = client.db("contest_create");
+        const usersCollection = database.collection("users");
+        const contestCollection = database.collection("contests");
+        const participationCollection = database.collection("participations");
 
-    // ============================================================
-    // 1. GENERAL USER & AUTHENTICATION ROUTES
-    // ============================================================
+        // --- Auth & JWT API ---
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '100d' });
+            res.send({ token });
+        });
 
-    /**
-     * @route POST /users
-     * @desc Save user information upon login/registration
-     */
-    app.post('/users', async (req, res) => {
-        const user = req.body;
-        const query = { email: user.email };
-        const existingUser = await usersCollection.findOne(query);
-        if (existingUser) return res.send({ message: 'User already exists', insertedId: null });
-        
-        // Default role is set to 'user'
-        const result = await usersCollection.insertOne({ ...user, role: 'user' });
-        res.send(result);
-    });
-
-    /**
-     * @route GET /users/role/:email
-     * @desc Get the specific role of a user to persist state on refresh
-     */
-    app.get('/users/role/:email', async (req, res) => {
-        const email = req.params.email;
-        const user = await usersCollection.findOne({ email });
-        res.send({ role: user?.role || 'user' });
-    });
-
-
-    // ============================================================
-    // 2. ADMIN ONLY ROUTES (Management)
-    // ============================================================
-
-    /**
-     * @route GET /users
-     * @desc Fetch all users for the Admin Dashboard
-     */
-    app.get('/users', async (req, res) => {
-        const result = await usersCollection.find().toArray();
-        res.send(result);
-    });
-
-    /**
-     * @route PATCH /users/role/:id
-     * @desc Update user roles (Admin, Creator, or User)
-     */
-    app.patch('/users/role/:id', async (req, res) => {
-        const id = req.params.id;
-        const { role } = req.body;
-        const filter = { _id: new ObjectId(id) };
-        const updatedDoc = { $set: { role: role } };
-        const result = await usersCollection.updateOne(filter, updatedDoc);
-        res.send(result);
-    });
-
-    /**
-     * @route GET /all-contests
-     * @desc Admin view to see all contests regardless of status
-     */
-    app.get('/all-contests', async (req, res) => {
-        const result = await contestCollection.find().toArray();
-        res.send(result);
-    });
-
-    /**
-     * @route PATCH /contests/status/:id
-     * @desc Admin approval for contests (Pending -> Accepted)
-     */
-    app.patch('/contests/status/:id', async (req, res) => {
-        const id = req.params.id;
-        const { status } = req.body;
-        const filter = { _id: new ObjectId(id) };
-        const updatedDoc = { $set: { status: status } };
-        const result = await contestCollection.updateOne(filter, updatedDoc);
-        res.send(result);
-    });
-
-
-    // ============================================================
-    // 3. CREATOR / MANAGER ROUTES
-    // ============================================================
-
-    /**
-     * @route POST /contests
-     * @desc Creators can submit new contests for approval
-     */
-    app.post('/contests', async (req, res) => {
-        const contest = req.body;
-        const newContest = {
-            ...contest,
-            participationCount: 0,
-            status: 'Pending', 
-            createdAt: new Date()
+        // --- Middlewares ---
+        const verifyToken = (req, res, next) => {
+            if (!req.headers.authorization) {
+                return res.status(401).send({ message: 'unauthorized access' });
+            }
+            const token = req.headers.authorization.split(' ')[1];
+            jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+                if (err) return res.status(401).send({ message: 'unauthorized access' });
+                req.decoded = decoded;
+                next();
+            });
         };
-        const result = await contestCollection.insertOne(newContest);
-        res.send(result);
-    });
 
-    /**
-     * @route GET /contests
-     * @desc Fetch contests created by a specific creator
-     */
-    app.get('/contests', async (req, res) => {
-        const email = req.query.email;
-        let query = {};
-        if (email) query = { creatorEmail: email };
-        const result = await contestCollection.find(query).toArray();
-        res.send(result);
-    });
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded?.email;
+            const user = await usersCollection.findOne({ email });
+            if (user?.role !== 'admin') {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+            next();
+        };
 
-
-    // ============================================================
-    // 4. PARTICIPANT / PUBLIC ROUTES
-    // ============================================================
-
-    /**
-     * @route GET /popular-contests
-     * @desc Fetch top 6 accepted contests based on participation
-     */
-    app.get('/popular-contests', async (req, res) => {
-        const result = await contestCollection.find({ status: 'Accepted' })
-            .sort({ participationCount: -1 })
-            .limit(6)
-            .toArray();
-        res.send(result);
-    });
-
-    /**
-     * @route POST /participations
-     * @desc Register a user for a contest after payment
-     */
-    app.post('/participations', async (req, res) => {
-        const data = req.body;
-        
-        // Prevent duplicate registrations
-        const existing = await participationCollection.findOne({ 
-            userEmail: data.userEmail, 
-            contestId: data.contestId 
+        // --- 1. User Management ---
+        app.post('/users', async (req, res) => {
+            const user = req.body;
+            const query = { email: user.email };
+            const existingUser = await usersCollection.findOne(query);
+            if (existingUser) return res.send({ message: 'User already exists', insertedId: null });
+            res.send(await usersCollection.insertOne({ ...user, role: 'user', winCount: 0, createdAt: new Date() }));
         });
-        if(existing) return res.status(400).send({ message: "Already Registered" });
 
-        const result = await participationCollection.insertOne({
-            ...data,
-            submissionStatus: 'Pending',
-            paymentDate: new Date()
+        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
+            res.send(await usersCollection.find().toArray());
         });
+
+        app.get('/users/role/:email', verifyToken, async (req, res) => {
+            const user = await usersCollection.findOne({ email: req.params.email });
+            res.send({ role: user?.role || 'user' });
+        });
+
+        app.patch('/users/role/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const { role } = req.body;
+            res.send(await usersCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { role: role } }));
+        });
+
+        app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
+            res.send(await usersCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
+        });
+
+        // --- 2. Contest Management ---
+        app.get('/contests', verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const userEmail = req.decoded.email;
+            const user = await usersCollection.findOne({ email: userEmail });
+            const isAdmin = user?.role === 'admin';
+
+            let query = {};
+            if (email) query = { creatorEmail: email };
+            else if (!isAdmin) return res.status(403).send({ message: 'forbidden' });
+            res.send(await contestCollection.find(query).toArray());
+        });
+
+        app.post('/contests', verifyToken, async (req, res) => {
+            const contest = req.body;
+            res.send(await contestCollection.insertOne({ ...contest, participationCount: 0, status: 'Pending', createdAt: new Date() }));
+        });
+
+        app.get('/contests/:id', async (req, res) => {
+            res.send(await contestCollection.findOne({ _id: new ObjectId(req.params.id) }));
+        });
+
+        app.patch('/contests/:id', verifyToken, async (req, res) => {
+            res.send(await contestCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: req.body }));
+        });
+
+        app.delete('/contests/:id', verifyToken, async (req, res) => {
+            res.send(await contestCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
+        });
+
+        app.patch('/contests/status/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const filter = { _id: new ObjectId(req.params.id) };
+            res.send(await contestCollection.updateOne(filter, { $set: { status: req.body.status } }));
+        });
+
+        // --- 3. Public API ---
+        app.get('/all-contests', async (req, res) => {
+            const { search, category } = req.query;
+            let query = { status: 'Accepted' };
+            if (search) query.contestName = { $regex: search, $options: 'i' };
+            if (category && category !== 'All') query.contestCategory = category;
+            res.send(await contestCollection.find(query).toArray());
+        });
+
+        app.get('/popular-contests', async (req, res) => {
+            res.send(await contestCollection.find({ status: 'Accepted' }).sort({ participationCount: -1 }).limit(6).toArray());
+        });
+
+        app.get('/leaderboard', async (req, res) => {
+            res.send(await usersCollection.find().sort({ winCount: -1 }).limit(10).toArray());
+        });
+
+        // --- 4. Payment (Stripe Checkout Redirect) ---
         
-        // Increment global participation count for the contest
-        const filter = { _id: new ObjectId(data.contestId) };
-        await contestCollection.updateOne(filter, { $inc: { participationCount: 1 } });
-        
-        res.send(result);
+        // ১. সেশন তৈরি
+        app.post('/create-checkout-session', verifyToken, async (req, res) => {
+            const { cost, contestName, contestId, userEmail } = req.body;
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: [{
+                    price_data: {
+                        currency: 'usd',
+                        product_data: { name: contestName },
+                        unit_amount: Math.round(cost * 100),
+                    },
+                    quantity: 1,
+                }],
+                mode: 'payment',
+                success_url: `http://localhost:5173/dashboard/my-participated?session_id={CHECKOUT_SESSION_ID}&contestId=${contestId}`,
+                cancel_url: `http://localhost:5173/payment/${contestId}`,
+                customer_email: userEmail,
+                metadata: { contestId, contestName, cost }
+            });
+            res.send({ url: session.url });
+        });
+
+        // ২. পেমেন্ট ভেরিফাই ও সেভ
+        app.post('/verify-payment', verifyToken, async (req, res) => {
+            const { sessionId, contestId } = req.body;
+            const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+            if (session.payment_status === 'paid') {
+                const exists = await participationCollection.findOne({ transactionId: session.payment_intent });
+                if (exists) return res.send({ success: true });
+                 
+                const contest = await contestCollection.findOne({ _id: new ObjectId(contestId) });
+                 
+                const paymentInfo = {
+                    contestId: contestId,
+                    contestName: session.metadata.contestName,
+                    transactionId: session.payment_intent,
+                    price: session.metadata.cost,
+                    userEmail: session.customer_details.email,
+                    status: 'Paid',
+                    deadline: contest?.deadline,
+                    paymentDate: new Date()
+                };
+
+                await participationCollection.insertOne(paymentInfo);
+                await contestCollection.updateOne({ _id: new ObjectId(contestId) }, { $inc: { participationCount: 1 } });
+                res.send({ success: true });
+            } else {
+                res.send({ success: false });
+            }
+        });
+
+        // User's Participations
+        app.get('/my-participations/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            const decodedEmail = req.decoded.email;
+
+            if (email !== decodedEmail) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+
+            const query = { userEmail: email };
+            const result = await participationCollection.find(query).toArray();
+            res.send(result);
+        });
+
+        // Submission API
+        app.patch('/submit-task/:id', verifyToken, async (req, res) => {
+        const id = req.params.id;
+        const { taskLink } = req.body;
+
+        const existing = await participationCollection.findOne({ _id: new ObjectId(id) });
+        if(existing?submittedTask){
+            return res.status(400).send({ message: 'Task already submitted' });
+        }    
+       
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+        $set: { 
+            submittedTask: taskLink,
+            submissionDate: new Date() 
+        }
+    };
+
+    const result = await participationCollection.updateOne(filter, updatedDoc);
+    res.send(result);
     });
 
-    console.log("Database Operational: Connected to MongoDB");
-  } catch (error) {
-    console.error("Database Connection Error:", error);
-  }
+
+        // --- 5. Winner Declaration ---
+        app.patch('/declare-winner/:contestId', verifyToken, async (req, res) => {
+            const { winnerEmail, winnerName, winnerImage } = req.body;
+            const filter = { _id: new ObjectId(req.params.contestId) };
+            await contestCollection.updateOne(filter, { $set: { winnerName, winnerImage, winnerEmail, status: 'Completed' } });
+            res.send(await usersCollection.updateOne({ email: winnerEmail }, { $inc: { winCount: 1 } }));
+        });
+
+        console.log("Database connected and listening!");
+    } finally { }
 }
-
 run().catch(console.dir);
 
-app.get('/', (req, res) => {
-    res.send('ContestHub API is active.');
-});
-
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+app.get('/', (req, res) => res.send('ContestHub Server is Running'));
+app.listen(port, () => console.log(`Listening on port ${port}`));
