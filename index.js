@@ -28,6 +28,7 @@ async function run() {
         const usersCollection = database.collection("users");
         const contestCollection = database.collection("contests");
         const participationCollection = database.collection("participations");
+        
 
         // --- Auth & JWT API ---
         app.post('/jwt', async (req, res) => {
@@ -124,13 +125,21 @@ async function run() {
         app.get('/all-contests', async (req, res) => {
             const { search, category } = req.query;
             let query = { status: 'Accepted' };
-            if (search) query.contestName = { $regex: search, $options: 'i' };
-            if (category && category !== 'All') query.contestCategory = category;
-            res.send(await contestCollection.find(query).toArray());
+            if (search) {
+                query.contestName = { $regex: search, $options: 'i' };
+            }
+            if (category && category !== 'All'){
+
+             query.contestCategory = category;
+            }
+            const result = await contestCollection.find(query).toArray();
+            res.send(result);
+            
         });
 
         app.get('/popular-contests', async (req, res) => {
-            res.send(await contestCollection.find({ status: 'Accepted' }).sort({ participationCount: -1 }).limit(6).toArray());
+           const result = await contestCollection.find({ status: 'Accepted' }).sort({ participationCount: -1 }).limit(6).toArray();
+           res.send(result);
         });
 
         app.get('/leaderboard', async (req, res) => {
@@ -179,7 +188,7 @@ async function run() {
                     price: session.metadata.cost,
                     userEmail: session.customer_details.email,
                     status: 'Paid',
-                    deadline: contest?.deadline,
+                    deadline: contest?.contestDeadline,
                     paymentDate: new Date()
                 };
 
@@ -232,7 +241,10 @@ async function run() {
     // All Submission
         app.get('/submissions/:contestId', verifyToken, async (req, res) => {
         const contestId = req.params.contestId;
-        const query = { contestId: contestId };
+        const query = { 
+            contestId:contestId,
+            submittedTask: {$exists: true}
+        };
         const result = await participationCollection.find(query).toArray();
         res.send(result);
      });
@@ -256,30 +268,63 @@ async function run() {
 
 
         // --- 5. Winner Declaration ---
-         app.patch('/make-winner/:participationId', verifyToken, async (req, res) => {
-            const participationId = req.params.participationId;
+       app.patch('/make-winner/:participationId', verifyToken, async (req, res) => {
             const { contestId, winnerEmail, winnerName } = req.body;
 
-            // ১. কন্টেস্ট কালেকশনে উইনারের তথ্য আপডেট করা এবং স্ট্যাটাস 'Completed' করা
+   
+            const contest = await contestCollection.findOne({ _id: new ObjectId(contestId) });
+            if (contest?.status === 'Completed') {
+                return res.status(400).send({ message: "Winner already declared for this contest!" });
+            }
+
+            // ২. কন্টেস্টের স্ট্যাটাস 'Completed' করুন এবং উইনারের তথ্য সেভ করুন
             await contestCollection.updateOne(
                 { _id: new ObjectId(contestId) },
                 { 
-            $set: { 
-                winnerEmail: winnerEmail, 
-                winnerName: winnerName,
-                status: 'Completed' 
-            } 
+                    $set: { 
+                        winnerEmail: winnerEmail, 
+                        winnerName: winnerName,
+                        status: 'Completed' 
+                    } 
+                }
+            );
+
+            // ৩. ইউজারের উইন কাউন্ট ১ বাড়িয়ে দিন
+            await usersCollection.updateOne(
+                { email: winnerEmail },
+                { $inc: { winCount: 1 } }
+            );
+
+            res.send({ success: true });
+});
+
+    // Leaderboard API
+    app.get('/leaderboard', async (req, res) => {
+ try {
+            const page = parseInt(req.query.page) || 1; // 👈 page starts from 1
+            const size = parseInt(req.query.size) || 10;
+
+            const skip = (page - 1) * size;
+
+            const totalCount = await usersCollection.countDocuments();
+
+            const winners = await usersCollection
+            .find()
+            .sort({ winCount: -1 })
+            .skip(skip)
+            .limit(size)
+            .toArray();
+
+            res.send({
+            winners,
+            totalPages: Math.ceil(totalCount / size),
+            currentPage: page
+            });
+        } catch (err) {
+            res.status(500).send({ message: "Leaderboard error" });
         }
-    );
 
-    
-        await usersCollection.updateOne(
-            { email: winnerEmail },
-            { $inc: { winCount: 1 } }
-        );
-
-        res.send({ success: true });
-    });
+  });
         
 
         console.log("Database connected and listening!");
