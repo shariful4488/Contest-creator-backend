@@ -139,7 +139,7 @@ async function run() {
 
         // --- 4. Payment (Stripe Checkout Redirect) ---
         
-        // ১. সেশন তৈরি
+        // Session creation for checkout
         app.post('/create-checkout-session', verifyToken, async (req, res) => {
             const { cost, contestName, contestId, userEmail } = req.body;
             const session = await stripe.checkout.sessions.create({
@@ -161,7 +161,7 @@ async function run() {
             res.send({ url: session.url });
         });
 
-        // ২. পেমেন্ট ভেরিফাই ও সেভ
+        // Payment verification and participation recording
         app.post('/verify-payment', verifyToken, async (req, res) => {
             const { sessionId, contestId } = req.body;
             const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -211,7 +211,7 @@ async function run() {
         const { taskLink } = req.body;
 
         const existing = await participationCollection.findOne({ _id: new ObjectId(id) });
-        if(existing?submittedTask){
+        if (existing?.submittedTask) {
             return res.status(400).send({ message: 'Task already submitted' });
         }    
        
@@ -223,18 +223,64 @@ async function run() {
         }
     };
 
-    const result = await participationCollection.updateOne(filter, updatedDoc);
-    res.send(result);
+
+        const result = await participationCollection.updateOne(filter, updatedDoc);
+        res.send(result);
     });
 
 
+    // All Submission
+        app.get('/submissions/:contestId', verifyToken, async (req, res) => {
+        const contestId = req.params.contestId;
+        const query = { contestId: contestId };
+        const result = await participationCollection.find(query).toArray();
+        res.send(result);
+     });
+
+
+
+    // User Winning Contests
+            app.get('/my-winnings/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            const decodedEmail = req.decoded.email;
+
+            if (email !== decodedEmail) {
+                return res.status(403).send({ message: 'forbidden access' });
+              }
+
+           
+                const query = { winnerEmail: email };
+                const result = await contestCollection.find(query).toArray();
+                res.send(result);
+            });
+
+
         // --- 5. Winner Declaration ---
-        app.patch('/declare-winner/:contestId', verifyToken, async (req, res) => {
-            const { winnerEmail, winnerName, winnerImage } = req.body;
-            const filter = { _id: new ObjectId(req.params.contestId) };
-            await contestCollection.updateOne(filter, { $set: { winnerName, winnerImage, winnerEmail, status: 'Completed' } });
-            res.send(await usersCollection.updateOne({ email: winnerEmail }, { $inc: { winCount: 1 } }));
-        });
+         app.patch('/make-winner/:participationId', verifyToken, async (req, res) => {
+            const participationId = req.params.participationId;
+            const { contestId, winnerEmail, winnerName } = req.body;
+
+            // ১. কন্টেস্ট কালেকশনে উইনারের তথ্য আপডেট করা এবং স্ট্যাটাস 'Completed' করা
+            await contestCollection.updateOne(
+                { _id: new ObjectId(contestId) },
+                { 
+            $set: { 
+                winnerEmail: winnerEmail, 
+                winnerName: winnerName,
+                status: 'Completed' 
+            } 
+        }
+    );
+
+    
+        await usersCollection.updateOne(
+            { email: winnerEmail },
+            { $inc: { winCount: 1 } }
+        );
+
+        res.send({ success: true });
+    });
+        
 
         console.log("Database connected and listening!");
     } finally { }
