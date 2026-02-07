@@ -1,9 +1,3 @@
-# dependencies
-node_modules/
-
-
+node_modules
 .env
-
-
 incubator.json
-incubator/
