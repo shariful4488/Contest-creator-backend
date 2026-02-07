@@ -199,8 +199,8 @@ async function run() {
                     quantity: 1,
                 }],
                 mode: 'payment',
-                success_url: `http://localhost:5173/dashboard/my-participated?session_id={CHECKOUT_SESSION_ID}&contestId=${contestId}`,
-                cancel_url: `http://localhost:5173/payment/${contestId}`,
+                success_url: `${process.env.CLIENT_URL}/dashboard/my-participated?session_id={CHECKOUT_SESSION_ID}&contestId=${contestId}`,
+                cancel_url: `${process.env.CLIENT_URL}/payment/${contestId}`,
                 customer_email: userEmail,
                 metadata: { contestId, contestName, cost }
             });
