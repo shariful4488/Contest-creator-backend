@@ -307,36 +307,36 @@ async function run() {
             });
 
 
-//         // --- 5. Winner Declaration ---
-//        app.patch('/make-winner/:participationId', verifyToken, async (req, res) => {
-//             const { contestId, winnerEmail, winnerName } = req.body;
+        // --- 5. Winner Declaration ---
+       app.patch('/make-winner/:participationId', verifyToken, async (req, res) => {
+            const { contestId, winnerEmail, winnerName } = req.body;
 
    
-//             const contest = await contestCollection.findOne({ _id: new ObjectId(contestId) });
-//             if (contest?.status === 'Completed') {
-//                 return res.status(400).send({ message: "Winner already declared for this contest!" });
-//             }
+            const contest = await contestCollection.findOne({ _id: new ObjectId(contestId) });
+            if (contest?.status === 'Completed') {
+                return res.status(400).send({ message: "Winner already declared for this contest!" });
+            }
 
            
-//             await contestCollection.updateOne(
-//                 { _id: new ObjectId(contestId) },
-//                 { 
-//                     $set: { 
-//                         winnerEmail: winnerEmail, 
-//                         winnerName: winnerName,
-//                         status: 'Completed' 
-//                     } 
-//                 }
-//             );
+            await contestCollection.updateOne(
+                { _id: new ObjectId(contestId) },
+                { 
+                    $set: { 
+                        winnerEmail: winnerEmail, 
+                        winnerName: winnerName,
+                        status: 'Completed' 
+                    } 
+                }
+            );
 
             
-//             await usersCollection.updateOne(
-//                 { email: winnerEmail },
-//                 { $inc: { winCount: 1 } }
-//             );
+            await usersCollection.updateOne(
+                { email: winnerEmail },
+                { $inc: { winCount: 1 } }
+            );
 
-//             res.send({ success: true });
-// });
+            res.send({ success: true });
+});
 
 //     // Leaderboard API
 //     app.get('/leaderboard', async (req, res) => {
