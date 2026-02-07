@@ -117,27 +117,27 @@ async function run() {
                 res.send(result);
         });
 
-//         // Create delete contest API
+        // Create delete contest API
 
-//         app.delete('/contests/:id', verifyToken, async (req, res) => {
-//             const id = req.params.id;
-//             const query = { _id: new ObjectId(id) };
+        app.delete('/contests/:id', verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
 
-//             const contest = await contestCollection.findOne(query);
+            const contest = await contestCollection.findOne(query);
 
-//             if(contest?.status === 'Accepted' || contest?.status === 'Completed'){
-//                 return res.status(400).send({ message: "Cannot delete an accepted or completed contest." });
+            if(contest?.status === 'Accepted' || contest?.status === 'Completed'){
+                return res.status(400).send({ message: "Cannot delete an accepted or completed contest." });
 
-//             }
+            }
            
-//             const result = await contestCollection.deleteOne(query);
-//             res.send(result);
-//         });
+            const result = await contestCollection.deleteOne(query);
+            res.send(result);
+        });
 
-//         app.patch('/contests/status/:id', verifyToken, verifyAdmin, async (req, res) => {
-//             const filter = { _id: new ObjectId(req.params.id) };
-//             res.send(await contestCollection.updateOne(filter, { $set: { status: req.body.status } }));
-//         });
+        app.patch('/contests/status/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const filter = { _id: new ObjectId(req.params.id) };
+            res.send(await contestCollection.updateOne(filter, { $set: { status: req.body.status } }));
+        });
 
 //         // --- 3. Public API ---
 //         app.get('/all-contests', async (req, res) => {
