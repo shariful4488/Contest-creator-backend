@@ -86,36 +86,36 @@ async function run() {
             res.send(await usersCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
         });
 
-//         // --- 2. Contest Management ---
-//         app.get('/contests', verifyToken, async (req, res) => {
-//             const email = req.query.email;
-//             const userEmail = req.decoded.email;
-//             const user = await usersCollection.findOne({ email: userEmail });
-//             const isAdmin = user?.role === 'admin';
+        // --- 2. Contest Management ---
+        app.get('/contests', verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const userEmail = req.decoded.email;
+            const user = await usersCollection.findOne({ email: userEmail });
+            const isAdmin = user?.role === 'admin';
 
-//             let query = {};
-//             if (email) query = { creatorEmail: email };
-//             else if (!isAdmin) return res.status(403).send({ message: 'forbidden' });
-//             res.send(await contestCollection.find(query).toArray());
-//         });
+            let query = {};
+            if (email) query = { creatorEmail: email };
+            else if (!isAdmin) return res.status(403).send({ message: 'forbidden' });
+            res.send(await contestCollection.find(query).toArray());
+        });
 
-//         app.post('/contests', verifyToken, async (req, res) => {
-//             const contest = req.body;
-//             res.send(await contestCollection.insertOne({ ...contest, participationCount: 0, status: 'Pending', createdAt: new Date() }));
-//         });
+        app.post('/contests', verifyToken, async (req, res) => {
+            const contest = req.body;
+            res.send(await contestCollection.insertOne({ ...contest, participationCount: 0, status: 'Pending', createdAt: new Date() }));
+        });
 
-//         app.get('/contests/:id', async (req, res) => {
-//             res.send(await contestCollection.findOne({ _id: new ObjectId(req.params.id) }));
-//         });
+        app.get('/contests/:id', async (req, res) => {
+            res.send(await contestCollection.findOne({ _id: new ObjectId(req.params.id) }));
+        });
 
-//         app.patch('/contests/:id', verifyToken, async (req, res) => {
-//             const id =req.params.id;
-//             const updatedData =req.body;
-//             const result =await contestCollection.updateOne(
-//                 { _id: new ObjectId(id) },
-//                 { $set: updatedData } );
-//                 res.send(result);
-//         });
+        app.patch('/contests/:id', verifyToken, async (req, res) => {
+            const id =req.params.id;
+            const updatedData =req.body;
+            const result =await contestCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: updatedData } );
+                res.send(result);
+        });
 
 //         // Create delete contest API
 
