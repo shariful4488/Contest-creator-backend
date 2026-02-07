@@ -291,20 +291,20 @@ async function run() {
 
 
 
-//     // User Winning Contests
-//             app.get('/my-winnings/:email', verifyToken, async (req, res) => {
-//             const email = req.params.email;
-//             const decodedEmail = req.decoded.email;
+    // User Winning Contests
+            app.get('/my-winnings/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            const decodedEmail = req.decoded.email;
 
-//             if (email !== decodedEmail) {
-//                 return res.status(403).send({ message: 'forbidden access' });
-//               }
+            if (email !== decodedEmail) {
+                return res.status(403).send({ message: 'forbidden access' });
+              }
 
            
-//                 const query = { winnerEmail: email };
-//                 const result = await contestCollection.find(query).toArray();
-//                 res.send(result);
-//             });
+                const query = { winnerEmail: email };
+                const result = await contestCollection.find(query).toArray();
+                res.send(result);
+            });
 
 
 //         // --- 5. Winner Declaration ---
