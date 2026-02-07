@@ -338,34 +338,34 @@ async function run() {
             res.send({ success: true });
 });
 
-//     // Leaderboard API
-//     app.get('/leaderboard', async (req, res) => {
-//     try {
-//         const page = parseInt(req.query.page) || 0;
-//         const size = parseInt(req.query.size) || 10;
-//         const skip = page * size;
+    // Leaderboard API
+    app.get('/leaderboard', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 0;
+        const size = parseInt(req.query.size) || 10;
+        const skip = page * size;
 
-//          const query = { winCount: { $gt: 0 } }; 
+         const query = { winCount: { $gt: 0 } }; 
 
-//         const totalCount = await usersCollection.countDocuments(query);
+        const totalCount = await usersCollection.countDocuments(query);
 
-//         const winners = await usersCollection
-//             .find(query)
-//             .sort({ winCount: -1 }) 
-//             .skip(skip)
-//             .limit(size)
-//             .toArray();
+        const winners = await usersCollection
+            .find(query)
+            .sort({ winCount: -1 }) 
+            .skip(skip)
+            .limit(size)
+            .toArray();
 
-//         res.send({
-//             winners,
-//             totalCount,
-//             totalPages: Math.ceil(totalCount / size),
-//             currentPage: page
-//         });
-//     } catch (err) {
-//         res.status(500).send({ message: "Leaderboard error", error: err.message });
-//     }
-// });
+        res.send({
+            winners,
+            totalCount,
+            totalPages: Math.ceil(totalCount / size),
+            currentPage: page
+        });
+    } catch (err) {
+        res.status(500).send({ message: "Leaderboard error", error: err.message });
+    }
+});
         
 
 //         console.log("Database connected and listening!");
