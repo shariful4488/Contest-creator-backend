@@ -240,19 +240,19 @@ async function run() {
             }
         });
 
-//         // User's Participations
-//         app.get('/my-participations/:email', verifyToken, async (req, res) => {
-//             const email = req.params.email;
-//             const decodedEmail = req.decoded.email;
+        // User's Participations
+        app.get('/my-participations/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            const decodedEmail = req.decoded.email;
 
-//             if (email !== decodedEmail) {
-//                 return res.status(403).send({ message: 'forbidden access' });
-//             }
+            if (email !== decodedEmail) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
 
-//             const query = { userEmail: email };
-//             const result = await participationCollection.find(query).toArray();
-//             res.send(result);
-//         });
+            const query = { userEmail: email };
+            const result = await participationCollection.find(query).toArray();
+            res.send(result);
+        });
 
 //         // Submission API
 //         app.patch('/submit-task/:id', verifyToken, async (req, res) => {
