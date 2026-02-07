@@ -368,10 +368,10 @@ async function run() {
 });
         
 
-//         console.log("Database connected and listening!");
-//     } finally { }
-// }
-// run().catch(console.dir);
+        console.log("Database connected and listening!");
+    } finally { }
+}
+run().catch(console.dir);
 
-// app.get('/', (req, res) => res.send('ContestHub Server is Running'));
-// app.listen(port, () => console.log(`Listening on port ${port}`));
+app.get('/', (req, res) => res.send('ContestHub Server is Running'));
+app.listen(port, () => console.log(`Listening on port ${port}`));
