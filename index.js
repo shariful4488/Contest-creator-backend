@@ -9,8 +9,16 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin:[
+        'http://localhost:5173',
+        'https://contest-creator-7e5d8.web.app'
+    ],
+    credentials:true
+}));
 app.use(express.json());
+
+
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@itnabil.agyee9s.mongodb.net/?appName=ItNabil`;
 
@@ -206,8 +214,7 @@ async function run() {
             });
             res.send({ url: session.url });
         });
-
-        // Payment verification and participation recording
+//      Payment verification after checkout
         app.post('/verify-payment', verifyToken, async (req, res) => {
             const { sessionId, contestId } = req.body;
             const session = await stripe.checkout.sessions.retrieve(sessionId);
