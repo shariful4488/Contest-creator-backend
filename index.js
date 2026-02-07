@@ -183,7 +183,7 @@ async function run() {
             res.send(await usersCollection.find().sort({ winCount: -1 }).limit(10).toArray());
         });
 
-//         // --- 4. Payment (Stripe Checkout Redirect) ---
+     // --- 4. Payment (Stripe Checkout Redirect) ---
         
         // Session creation for checkout
         app.post('/create-checkout-session', verifyToken, async (req, res) => {
@@ -278,16 +278,16 @@ async function run() {
     });
 
 
-//     // All Submission
-//         app.get('/submissions/:contestId', verifyToken, async (req, res) => {
-//         const contestId = req.params.contestId;
-//         const query = { 
-//             contestId:contestId,
-//             submittedTask: {$exists: true}
-//         };
-//         const result = await participationCollection.find(query).toArray();
-//         res.send(result);
-//      });
+    // All Submission
+        app.get('/submissions/:contestId', verifyToken, async (req, res) => {
+        const contestId = req.params.contestId;
+        const query = { 
+            contestId:contestId,
+            submittedTask: {$exists: true}
+        };
+        const result = await participationCollection.find(query).toArray();
+        res.send(result);
+     });
 
 
 
