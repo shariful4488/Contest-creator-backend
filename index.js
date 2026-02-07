@@ -185,60 +185,60 @@ async function run() {
 
 //         // --- 4. Payment (Stripe Checkout Redirect) ---
         
-//         // Session creation for checkout
-//         app.post('/create-checkout-session', verifyToken, async (req, res) => {
-//             const { cost, contestName, contestId, userEmail } = req.body;
-//             const session = await stripe.checkout.sessions.create({
-//                 payment_method_types: ['card'],
-//                 line_items: [{
-//                     price_data: {
-//                         currency: 'usd',
-//                         product_data: { name: contestName },
-//                         unit_amount: Math.round(cost * 100),
-//                     },
-//                     quantity: 1,
-//                 }],
-//                 mode: 'payment',
-//                 success_url: `http://localhost:5173/dashboard/my-participated?session_id={CHECKOUT_SESSION_ID}&contestId=${contestId}`,
-//                 cancel_url: `http://localhost:5173/payment/${contestId}`,
-//                 customer_email: userEmail,
-//                 metadata: { contestId, contestName, cost }
-//             });
-//             res.send({ url: session.url });
-//         });
+        // Session creation for checkout
+        app.post('/create-checkout-session', verifyToken, async (req, res) => {
+            const { cost, contestName, contestId, userEmail } = req.body;
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: [{
+                    price_data: {
+                        currency: 'usd',
+                        product_data: { name: contestName },
+                        unit_amount: Math.round(cost * 100),
+                    },
+                    quantity: 1,
+                }],
+                mode: 'payment',
+                success_url: `http://localhost:5173/dashboard/my-participated?session_id={CHECKOUT_SESSION_ID}&contestId=${contestId}`,
+                cancel_url: `http://localhost:5173/payment/${contestId}`,
+                customer_email: userEmail,
+                metadata: { contestId, contestName, cost }
+            });
+            res.send({ url: session.url });
+        });
 
-//         // Payment verification and participation recording
-//         app.post('/verify-payment', verifyToken, async (req, res) => {
-//             const { sessionId, contestId } = req.body;
-//             const session = await stripe.checkout.sessions.retrieve(sessionId);
+        // Payment verification and participation recording
+        app.post('/verify-payment', verifyToken, async (req, res) => {
+            const { sessionId, contestId } = req.body;
+            const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-//             if (session.payment_status === 'paid') {
-//                 const exists = await participationCollection.findOne({ transactionId: session.payment_intent });
-//                 if (exists) return res.send({ success: true });
+            if (session.payment_status === 'paid') {
+                const exists = await participationCollection.findOne({ transactionId: session.payment_intent });
+                if (exists) return res.send({ success: true });
                  
-//                 const contest = await contestCollection.findOne({ _id: new ObjectId(contestId) });
+                const contest = await contestCollection.findOne({ _id: new ObjectId(contestId) });
                  
-//                 const paymentInfo = {
-//                     contestId: contestId,
-//                     contestName: session.metadata.contestName,
-//                     transactionId: session.payment_intent,
-//                     price: session.metadata.cost,
-//                     userEmail: session.customer_details.email,
-//                     status: 'Paid',
-//                     deadline: contest?.contestDeadline,
-//                     paymentDate: new Date()
-//                 };
+                const paymentInfo = {
+                    contestId: contestId,
+                    contestName: session.metadata.contestName,
+                    transactionId: session.payment_intent,
+                    price: session.metadata.cost,
+                    userEmail: session.customer_details.email,
+                    status: 'Paid',
+                    deadline: contest?.contestDeadline,
+                    paymentDate: new Date()
+                };
 
-//                 await participationCollection.insertOne(paymentInfo);
-//                 await contestCollection.updateOne(
-//                     { _id: new ObjectId(contestId) },
-//                     { $inc: { participationCount: 1 } }
-//                 )
-//                 res.send({ success: true });
-//             } else {
-//                 res.send({ success: false });
-//             }
-//         });
+                await participationCollection.insertOne(paymentInfo);
+                await contestCollection.updateOne(
+                    { _id: new ObjectId(contestId) },
+                    { $inc: { participationCount: 1 } }
+                )
+                res.send({ success: true });
+            } else {
+                res.send({ success: false });
+            }
+        });
 
 //         // User's Participations
 //         app.get('/my-participations/:email', verifyToken, async (req, res) => {
