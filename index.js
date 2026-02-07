@@ -109,11 +109,29 @@ async function run() {
         });
 
         app.patch('/contests/:id', verifyToken, async (req, res) => {
-            res.send(await contestCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: req.body }));
+            const id =req.params.id;
+            const updatedData =req.body;
+            const result =await contestCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: updatedData } );
+                res.send(result);
         });
 
+        // Create delete contest API
+
         app.delete('/contests/:id', verifyToken, async (req, res) => {
-            res.send(await contestCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+
+            const contest = await contestCollection.findOne(query);
+
+            if(contest?.status === 'Accepted' || contest?.status === 'Completed'){
+                return res.status(400).send({ message: "Cannot delete an accepted or completed contest." });
+
+            }
+           
+            const result = await contestCollection.deleteOne(query);
+            res.send(result);
         });
 
         app.patch('/contests/status/:id', verifyToken, verifyAdmin, async (req, res) => {
@@ -123,18 +141,37 @@ async function run() {
 
         // --- 3. Public API ---
         app.get('/all-contests', async (req, res) => {
-            const { search, category } = req.query;
+           const { search, category, page, size } = req.query;
+    
+            const pageNumber = parseInt(page) || 0;
+            const limitNumber = parseInt(size) || 6;
+
             let query = { status: 'Accepted' };
+
             if (search) {
                 query.contestName = { $regex: search, $options: 'i' };
             }
-            if (category && category !== 'All'){
-
-             query.contestCategory = category;
+            if (category && category !== 'All') {
+                query.contestCategory = category;
             }
-            const result = await contestCollection.find(query).toArray();
-            res.send(result);
-            
+
+            try {
+                const totalCount = await contestCollection.countDocuments(query);
+
+                
+                const result = await contestCollection.find(query)
+                    .skip(pageNumber * limitNumber)
+                    .limit(limitNumber)
+                    .toArray();
+
+                res.send({
+                    contests: result,
+                    totalPages: Math.ceil(totalCount / limitNumber),
+                    totalCount
+                });
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching contests" });
+            }
         });
 
         app.get('/popular-contests', async (req, res) => {
@@ -193,7 +230,10 @@ async function run() {
                 };
 
                 await participationCollection.insertOne(paymentInfo);
-                await contestCollection.updateOne({ _id: new ObjectId(contestId) }, { $inc: { participationCount: 1 } });
+                await contestCollection.updateOne(
+                    { _id: new ObjectId(contestId) },
+                    { $inc: { participationCount: 1 } }
+                )
                 res.send({ success: true });
             } else {
                 res.send({ success: false });
@@ -277,7 +317,7 @@ async function run() {
                 return res.status(400).send({ message: "Winner already declared for this contest!" });
             }
 
-            // ২. কন্টেস্টের স্ট্যাটাস 'Completed' করুন এবং উইনারের তথ্য সেভ করুন
+           
             await contestCollection.updateOne(
                 { _id: new ObjectId(contestId) },
                 { 
@@ -289,7 +329,7 @@ async function run() {
                 }
             );
 
-            // ৩. ইউজারের উইন কাউন্ট ১ বাড়িয়ে দিন
+            
             await usersCollection.updateOne(
                 { email: winnerEmail },
                 { $inc: { winCount: 1 } }
@@ -300,31 +340,32 @@ async function run() {
 
     // Leaderboard API
     app.get('/leaderboard', async (req, res) => {
- try {
-            const page = parseInt(req.query.page) || 1; // 👈 page starts from 1
-            const size = parseInt(req.query.size) || 10;
+    try {
+        const page = parseInt(req.query.page) || 0;
+        const size = parseInt(req.query.size) || 10;
+        const skip = page * size;
 
-            const skip = (page - 1) * size;
+         const query = { winCount: { $gt: 0 } }; 
 
-            const totalCount = await usersCollection.countDocuments();
+        const totalCount = await usersCollection.countDocuments(query);
 
-            const winners = await usersCollection
-            .find()
-            .sort({ winCount: -1 })
+        const winners = await usersCollection
+            .find(query)
+            .sort({ winCount: -1 }) 
             .skip(skip)
             .limit(size)
             .toArray();
 
-            res.send({
+        res.send({
             winners,
+            totalCount,
             totalPages: Math.ceil(totalCount / size),
             currentPage: page
-            });
-        } catch (err) {
-            res.status(500).send({ message: "Leaderboard error" });
-        }
-
-  });
+        });
+    } catch (err) {
+        res.status(500).send({ message: "Leaderboard error", error: err.message });
+    }
+});
         
 
         console.log("Database connected and listening!");
