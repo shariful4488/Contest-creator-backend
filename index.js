@@ -2,6 +2,7 @@ const express = require('express');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const { getDatabaseWithUrl } = require('firebase-admin/database');
 require('dotenv').config();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
@@ -12,9 +13,12 @@ const port = process.env.PORT || 5000;
 app.use(cors({
     origin:[
         'http://localhost:5173',
-        'https://contest-creator-7e5d8.web.app'
+        'https://contest-creator-7e5d8.web.app',
+        'https://contest-creator-7e5d8.firebaseapp.com'
     ],
-    credentials:true
+    credentials:true,
+    methods: ["GET", "POST", "PATCH", "DELETE","OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
 }));
 app.use(express.json());
 
@@ -195,14 +199,22 @@ async function run() {
         
         // Session creation for checkout
         app.post('/create-checkout-session', verifyToken, async (req, res) => {
+        try {
             const { cost, contestName, contestId, userEmail } = req.body;
+            const amount = Math.round(parseFloat(cost) * 100);
+            if (isNaN(amount) || amount <= 0) {
+                return res.status(400).send({ message: "Invalid cost amount" });
+            }
+
             const session = await stripe.checkout.sessions.create({
                 payment_method_types: ['card'],
                 line_items: [{
                     price_data: {
                         currency: 'usd',
-                        product_data: { name: contestName },
-                        unit_amount: Math.round(cost * 100),
+                        product_data: { 
+                            name: contestName,
+                        },
+                        unit_amount: amount,
                     },
                     quantity: 1,
                 }],
@@ -210,10 +222,19 @@ async function run() {
                 success_url: `${process.env.CLIENT_URL}/dashboard/my-participated?session_id={CHECKOUT_SESSION_ID}&contestId=${contestId}`,
                 cancel_url: `${process.env.CLIENT_URL}/payment/${contestId}`,
                 customer_email: userEmail,
-                metadata: { contestId, contestName, cost }
+                metadata: { 
+                    contestId: contestId.toString(), 
+                    contestName: contestName, 
+                    cost: cost.toString() 
+                }
             });
+
             res.send({ url: session.url });
-        });
+        } catch (error) {
+            console.error("Stripe Error Details:", error); 
+            res.status(500).send({ message: error.message });
+        }
+});
 //      Payment verification after checkout
         app.post('/verify-payment', verifyToken, async (req, res) => {
             const { sessionId, contestId } = req.body;
