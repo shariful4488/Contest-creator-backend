@@ -59,14 +59,14 @@ async function run() {
             next();
         };
 
-//         // --- 1. User Management ---
-//         app.post('/users', async (req, res) => {
-//             const user = req.body;
-//             const query = { email: user.email };
-//             const existingUser = await usersCollection.findOne(query);
-//             if (existingUser) return res.send({ message: 'User already exists', insertedId: null });
-//             res.send(await usersCollection.insertOne({ ...user, role: 'user', winCount: 0, createdAt: new Date() }));
-//         });
+        // --- 1. User Management ---
+        app.post('/users', async (req, res) => {
+            const user = req.body;
+            const query = { email: user.email };
+            const existingUser = await usersCollection.findOne(query);
+            if (existingUser) return res.send({ message: 'User already exists', insertedId: null });
+            res.send(await usersCollection.insertOne({ ...user, role: 'user', winCount: 0, createdAt: new Date() }));
+        });
 
 //         app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
 //             res.send(await usersCollection.find().toArray());
