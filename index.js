@@ -68,23 +68,23 @@ async function run() {
             res.send(await usersCollection.insertOne({ ...user, role: 'user', winCount: 0, createdAt: new Date() }));
         });
 
-//         app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
-//             res.send(await usersCollection.find().toArray());
-//         });
+        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
+            res.send(await usersCollection.find().toArray());
+        });
 
-//         app.get('/users/role/:email', verifyToken, async (req, res) => {
-//             const user = await usersCollection.findOne({ email: req.params.email });
-//             res.send({ role: user?.role || 'user' });
-//         });
+        app.get('/users/role/:email', verifyToken, async (req, res) => {
+            const user = await usersCollection.findOne({ email: req.params.email });
+            res.send({ role: user?.role || 'user' });
+        });
 
-//         app.patch('/users/role/:id', verifyToken, verifyAdmin, async (req, res) => {
-//             const { role } = req.body;
-//             res.send(await usersCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { role: role } }));
-//         });
+        app.patch('/users/role/:id', verifyToken, verifyAdmin, async (req, res) => {
+            const { role } = req.body;
+            res.send(await usersCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { role: role } }));
+        });
 
-//         app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
-//             res.send(await usersCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
-//         });
+        app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
+            res.send(await usersCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
+        });
 
 //         // --- 2. Contest Management ---
 //         app.get('/contests', verifyToken, async (req, res) => {
