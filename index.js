@@ -139,49 +139,49 @@ async function run() {
             res.send(await contestCollection.updateOne(filter, { $set: { status: req.body.status } }));
         });
 
-//         // --- 3. Public API ---
-//         app.get('/all-contests', async (req, res) => {
-//            const { search, category, page, size } = req.query;
+        // --- 3. Public API ---
+        app.get('/all-contests', async (req, res) => {
+           const { search, category, page, size } = req.query;
     
-//             const pageNumber = parseInt(page) || 0;
-//             const limitNumber = parseInt(size) || 6;
+            const pageNumber = parseInt(page) || 0;
+            const limitNumber = parseInt(size) || 6;
 
-//             let query = { status: 'Accepted' };
+            let query = { status: 'Accepted' };
 
-//             if (search) {
-//                 query.contestName = { $regex: search, $options: 'i' };
-//             }
-//             if (category && category !== 'All') {
-//                 query.contestCategory = category;
-//             }
+            if (search) {
+                query.contestName = { $regex: search, $options: 'i' };
+            }
+            if (category && category !== 'All') {
+                query.contestCategory = category;
+            }
 
-//             try {
-//                 const totalCount = await contestCollection.countDocuments(query);
+            try {
+                const totalCount = await contestCollection.countDocuments(query);
 
                 
-//                 const result = await contestCollection.find(query)
-//                     .skip(pageNumber * limitNumber)
-//                     .limit(limitNumber)
-//                     .toArray();
+                const result = await contestCollection.find(query)
+                    .skip(pageNumber * limitNumber)
+                    .limit(limitNumber)
+                    .toArray();
 
-//                 res.send({
-//                     contests: result,
-//                     totalPages: Math.ceil(totalCount / limitNumber),
-//                     totalCount
-//                 });
-//             } catch (error) {
-//                 res.status(500).send({ message: "Error fetching contests" });
-//             }
-//         });
+                res.send({
+                    contests: result,
+                    totalPages: Math.ceil(totalCount / limitNumber),
+                    totalCount
+                });
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching contests" });
+            }
+        });
 
-//         app.get('/popular-contests', async (req, res) => {
-//            const result = await contestCollection.find({ status: 'Accepted' }).sort({ participationCount: -1 }).limit(6).toArray();
-//            res.send(result);
-//         });
+        app.get('/popular-contests', async (req, res) => {
+           const result = await contestCollection.find({ status: 'Accepted' }).sort({ participationCount: -1 }).limit(6).toArray();
+           res.send(result);
+        });
 
-//         app.get('/leaderboard', async (req, res) => {
-//             res.send(await usersCollection.find().sort({ winCount: -1 }).limit(10).toArray());
-//         });
+        app.get('/leaderboard', async (req, res) => {
+            res.send(await usersCollection.find().sort({ winCount: -1 }).limit(10).toArray());
+        });
 
 //         // --- 4. Payment (Stripe Checkout Redirect) ---
         
