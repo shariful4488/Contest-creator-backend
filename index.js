@@ -10,18 +10,27 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors({
-    origin:[
-        'http://localhost:5173',
-        'https://contest-creator-7e5d8.web.app',
-        'https://contest-creator-7e5d8.firebaseapp.com'
-    ],
-    credentials:true,
-    methods: ["GET", "POST", "PATCH", "DELETE","OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-}));
-app.use(express.json());
+// app.use(cors({
+//     origin:[
+//         'http://localhost:5173',
+//         'https://contest-creator-7e5d8.web.app',
+//         'https://contest-creator-7e5d8.firebaseapp.com'
+//     ],
+//     credentials:true,
+//     methods: ["GET", "POST", "PATCH", "DELETE","OPTIONS"],
+//     allowedHeaders: ["Content-Type", "Authorization"]
+// }));
 
+
+
+// Payment Gateway
+// STRIPE_SECRET_KEY=pk_test_51N8n9uKl7nqLhXo9sH8m1u5Zt2al3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Z
+// ACCESS_TOKEN_SECRET=8f5e1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d
+
+
+
+app.use(cors())
+app.use(express.json());
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@itnabil.agyee9s.mongodb.net/?appName=ItNabil`;
@@ -42,34 +51,34 @@ async function run() {
         const participationCollection = database.collection("participations");
         
 
-        // --- Auth & JWT API ---
-        app.post('/jwt', async (req, res) => {
-            const user = req.body;
-            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '100d' });
-            res.send({ token });
-        });
+        // // --- Auth & JWT API ---
+        // app.post('/jwt', async (req, res) => {
+        //     const user = req.body;
+        //     const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '100d' });
+        //     res.send({ token });
+        // });
 
-        // --- Middlewares ---
-        const verifyToken = (req, res, next) => {
-            if (!req.headers.authorization) {
-                return res.status(401).send({ message: 'unauthorized access' });
-            }
-            const token = req.headers.authorization.split(' ')[1];
-            jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-                if (err) return res.status(401).send({ message: 'unauthorized access' });
-                req.decoded = decoded;
-                next();
-            });
-        };
+        // // --- Middlewares ---
+        // const verifyToken = (req, res, next) => {
+        //     if (!req.headers.authorization) {
+        //         return res.status(401).send({ message: 'unauthorized access' });
+        //     }
+        //     const token = req.headers.authorization.split(' ')[1];
+        //     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        //         if (err) return res.status(401).send({ message: 'unauthorized access' });
+        //         req.decoded = decoded;
+        //         next();
+        //     });
+        // };
 
-        const verifyAdmin = async (req, res, next) => {
-            const email = req.decoded?.email;
-            const user = await usersCollection.findOne({ email });
-            if (user?.role !== 'admin') {
-                return res.status(403).send({ message: 'forbidden access' });
-            }
-            next();
-        };
+        // const verifyAdmin = async (req, res, next) => {
+        //     const email = req.decoded?.email;
+        //     const user = await usersCollection.findOne({ email });
+        //     if (user?.role !== 'admin') {
+        //         return res.status(403).send({ message: 'forbidden access' });
+        //     }
+        //     next();
+        // };
 
         // --- 1. User Management ---
         app.post('/users', async (req, res) => {
@@ -80,38 +89,58 @@ async function run() {
             res.send(await usersCollection.insertOne({ ...user, role: 'user', winCount: 0, createdAt: new Date() }));
         });
 
-        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
+        app.get('/users',  async (req, res) => {
             res.send(await usersCollection.find().toArray());
         });
 
-        app.get('/users/role/:email', verifyToken, async (req, res) => {
+        app.get('/users/role/:email',  async (req, res) => {
             const user = await usersCollection.findOne({ email: req.params.email });
             res.send({ role: user?.role || 'user' });
         });
 
-        app.patch('/users/role/:id', verifyToken, verifyAdmin, async (req, res) => {
+        app.patch('/users/role/:id',  async (req, res) => {
             const { role } = req.body;
             res.send(await usersCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { role: role } }));
         });
 
-        app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
+        app.delete('/users/:id', async (req, res) => {
             res.send(await usersCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
         });
 
+        // // --- 2. Contest Management ---
+        // app.get('/contests', async (req, res) => {
+        //     const email = req.query.email;
+        //     const userEmail = req.decoded.email;
+        //     const user = await usersCollection.findOne({ email: userEmail });
+        //     const isAdmin = user?.role === 'admin';
+
+        //     let query = {};
+        //     if (email) query = { creatorEmail: email };
+        //     else if (!isAdmin) return res.status(403).send({ message: 'forbidden' });
+        //     res.send(await contestCollection.find(query).toArray());
+        // });
+
         // --- 2. Contest Management ---
-        app.get('/contests', verifyToken, async (req, res) => {
-            const email = req.query.email;
-            const userEmail = req.decoded.email;
-            const user = await usersCollection.findOne({ email: userEmail });
-            const isAdmin = user?.role === 'admin';
+app.get('/contests', async (req, res) => {
+    try {
+        const email = req.query.email;
+        let query = {};
 
-            let query = {};
-            if (email) query = { creatorEmail: email };
-            else if (!isAdmin) return res.status(403).send({ message: 'forbidden' });
-            res.send(await contestCollection.find(query).toArray());
-        });
+      
+        if (email) {
+            query = { creatorEmail: email };
+        }
 
-        app.post('/contests', verifyToken, async (req, res) => {
+        const contests = await contestCollection.find(query).toArray();
+        res.send(contests);
+    } catch (err) {
+        console.error("Error fetching contests:", err);
+        res.status(500).send({ message: "Internal Server Error" });
+    }
+});
+
+
+        app.post('/contests',  async (req, res) => {
             const contest = req.body;
             res.send(await contestCollection.insertOne({ ...contest, participationCount: 0, status: 'Pending', createdAt: new Date() }));
         });
@@ -120,7 +149,7 @@ async function run() {
             res.send(await contestCollection.findOne({ _id: new ObjectId(req.params.id) }));
         });
 
-        app.patch('/contests/:id', verifyToken, async (req, res) => {
+        app.patch('/contests/:id',  async (req, res) => {
             const id =req.params.id;
             const updatedData =req.body;
             const result =await contestCollection.updateOne(
@@ -131,7 +160,7 @@ async function run() {
 
         // Create delete contest API
 
-        app.delete('/contests/:id', verifyToken, async (req, res) => {
+        app.delete('/contests/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
 
@@ -146,7 +175,7 @@ async function run() {
             res.send(result);
         });
 
-        app.patch('/contests/status/:id', verifyToken, verifyAdmin, async (req, res) => {
+        app.patch('/contests/status/:id',  async (req, res) => {
             const filter = { _id: new ObjectId(req.params.id) };
             res.send(await contestCollection.updateOne(filter, { $set: { status: req.body.status } }));
         });
@@ -198,7 +227,7 @@ async function run() {
      // --- 4. Payment (Stripe Checkout Redirect) ---
         
         // Session creation for checkout
-        app.post('/create-checkout-session', verifyToken, async (req, res) => {
+        app.post('/create-checkout-session',  async (req, res) => {
         try {
             const { cost, contestName, contestId, userEmail } = req.body;
             const amount = Math.round(parseFloat(cost) * 100);
@@ -236,7 +265,7 @@ async function run() {
         }
 });
 //      Payment verification after checkout
-        app.post('/verify-payment', verifyToken, async (req, res) => {
+        app.post('/verify-payment', async (req, res) => {
             const { sessionId, contestId } = req.body;
             const session = await stripe.checkout.sessions.retrieve(sessionId);
 
@@ -268,22 +297,37 @@ async function run() {
             }
         });
 
-        // User's Participations
-        app.get('/my-participations/:email', verifyToken, async (req, res) => {
-            const email = req.params.email;
-            const decodedEmail = req.decoded.email;
+        // // User's Participations
+        // app.get('/my-participations/:email', async (req, res) => {
+        //     const email = req.params.email;
+        //     const decodedEmail = req.decoded.email;
 
-            if (email !== decodedEmail) {
-                return res.status(403).send({ message: 'forbidden access' });
-            }
+        //     if (email !== decodedEmail) {
+        //         return res.status(403).send({ message: 'forbidden access' });
+        //     }
 
-            const query = { userEmail: email };
-            const result = await participationCollection.find(query).toArray();
-            res.send(result);
-        });
+        //     const query = { userEmail: email };
+        //     const result = await participationCollection.find(query).toArray();
+        //     res.send(result);
+        // });
+// User's Participations (JWT ছাড়া)
+app.get('/my-participations/:email', async (req, res) => {
+    try {
+        const email = req.params.email;
+
+    
+        const query = { userEmail: email };
+        const result = await participationCollection.find(query).toArray();
+
+        res.send(result);
+    } catch (err) {
+        console.error("Error fetching participations:", err);
+        res.status(500).send({ message: "Internal Server Error" });
+    }
+});
 
         // Submission API
-        app.patch('/submit-task/:id', verifyToken, async (req, res) => {
+        app.patch('/submit-task/:id', async (req, res) => {
         const id = req.params.id;
         const { taskLink } = req.body;
 
@@ -307,7 +351,7 @@ async function run() {
 
 
     // All Submission
-        app.get('/submissions/:contestId', verifyToken, async (req, res) => {
+        app.get('/submissions/:contestId', async (req, res) => {
         const contestId = req.params.contestId;
         const query = { 
             contestId:contestId,
@@ -320,23 +364,37 @@ async function run() {
 
 
     // User Winning Contests
-            app.get('/my-winnings/:email', verifyToken, async (req, res) => {
-            const email = req.params.email;
-            const decodedEmail = req.decoded.email;
+            // app.get('/my-winnings/:email', async (req, res) => {
+            // const email = req.params.email;
+            // const decodedEmail = req.decoded.email;
 
-            if (email !== decodedEmail) {
-                return res.status(403).send({ message: 'forbidden access' });
-              }
+            // if (email !== decodedEmail) {
+            //     return res.status(403).send({ message: 'forbidden access' });
+            //   }
 
            
-                const query = { winnerEmail: email };
-                const result = await contestCollection.find(query).toArray();
-                res.send(result);
-            });
+            //     const query = { winnerEmail: email };
+            //     const result = await contestCollection.find(query).toArray();
+            //     res.send(result);
+            // });
+
+app.get('/my-winnings/:email', async (req, res) => {
+    try {
+        const email = req.params.email;
+
+        const query = { winnerEmail: email };
+        const result = await contestCollection.find(query).toArray();
+
+        res.send(result);
+    } catch (err) {
+        console.error("Error fetching winnings:", err);
+        res.status(500).send({ message: "Internal Server Error" });
+    }
+});
 
 
         // --- 5. Winner Declaration ---
-       app.patch('/make-winner/:participationId', verifyToken, async (req, res) => {
+       app.patch('/make-winner/:participationId', async (req, res) => {
             const { contestId, winnerEmail, winnerName } = req.body;
 
    
