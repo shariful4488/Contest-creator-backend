@@ -254,28 +254,28 @@ async function run() {
             res.send(result);
         });
 
-//         // Submission API
-//         app.patch('/submit-task/:id', verifyToken, async (req, res) => {
-//         const id = req.params.id;
-//         const { taskLink } = req.body;
+        // Submission API
+        app.patch('/submit-task/:id', verifyToken, async (req, res) => {
+        const id = req.params.id;
+        const { taskLink } = req.body;
 
-//         const existing = await participationCollection.findOne({ _id: new ObjectId(id) });
-//         if (existing?.submittedTask) {
-//             return res.status(400).send({ message: 'Task already submitted' });
-//         }    
+        const existing = await participationCollection.findOne({ _id: new ObjectId(id) });
+        if (existing?.submittedTask) {
+            return res.status(400).send({ message: 'Task already submitted' });
+        }    
        
-//         const filter = { _id: new ObjectId(id) };
-//         const updatedDoc = {
-//         $set: { 
-//             submittedTask: taskLink,
-//             submissionDate: new Date() 
-//         }
-//     };
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+        $set: { 
+            submittedTask: taskLink,
+            submissionDate: new Date() 
+        }
+    };
 
 
-//         const result = await participationCollection.updateOne(filter, updatedDoc);
-//         res.send(result);
-//     });
+        const result = await participationCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+    });
 
 
 //     // All Submission
