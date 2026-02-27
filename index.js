@@ -2,7 +2,7 @@ const express = require('express');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const { getDatabaseWithUrl } = require('firebase-admin/database');
+const bcrypt = require('bcryptjs');
 require('dotenv').config();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
@@ -10,28 +10,8 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
-// app.use(cors({
-//     origin:[
-//         'http://localhost:5173',
-//         'https://contest-creator-7e5d8.web.app',
-//         'https://contest-creator-7e5d8.firebaseapp.com'
-//     ],
-//     credentials:true,
-//     methods: ["GET", "POST", "PATCH", "DELETE","OPTIONS"],
-//     allowedHeaders: ["Content-Type", "Authorization"]
-// }));
-
-
-
-// Payment Gateway
-// STRIPE_SECRET_KEY=pk_test_51N8n9uKl7nqLhXo9sH8m1u5Zt2al3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Zt2aLl3n9s1qj8mXo7u2Z
-// ACCESS_TOKEN_SECRET=8f5e1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d
-
-
-
-app.use(cors())
+app.use(cors());
 app.use(express.json());
-
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@itnabil.agyee9s.mongodb.net/?appName=ItNabil`;
 
@@ -49,222 +29,197 @@ async function run() {
         const usersCollection = database.collection("users");
         const contestCollection = database.collection("contests");
         const participationCollection = database.collection("participations");
-        
 
-        // // --- Auth & JWT API ---
-        // app.post('/jwt', async (req, res) => {
-        //     const user = req.body;
-        //     const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '100d' });
-        //     res.send({ token });
-        // });
+        // --- 1. Admin Statistics ---
+        app.get('/admin-stats', async (req, res) => {
+            try {
+                const users = await usersCollection.estimatedDocumentCount();
+                const contests = await contestCollection.estimatedDocumentCount();
+                const payments = await participationCollection.find().toArray();
+                const revenue = payments.reduce((sum, payment) => sum + parseFloat(payment.price || 0), 0);
 
-        // // --- Middlewares ---
-        // const verifyToken = (req, res, next) => {
-        //     if (!req.headers.authorization) {
-        //         return res.status(401).send({ message: 'unauthorized access' });
-        //     }
-        //     const token = req.headers.authorization.split(' ')[1];
-        //     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-        //         if (err) return res.status(401).send({ message: 'unauthorized access' });
-        //         req.decoded = decoded;
-        //         next();
-        //     });
-        // };
+                res.send({
+                    users,
+                    contests,
+                    revenue: parseFloat(revenue.toFixed(2))
+                });
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching stats" });
+            }
+        });
 
-        // const verifyAdmin = async (req, res, next) => {
-        //     const email = req.decoded?.email;
-        //     const user = await usersCollection.findOne({ email });
-        //     if (user?.role !== 'admin') {
-        //         return res.status(403).send({ message: 'forbidden access' });
-        //     }
-        //     next();
-        // };
-
-        // --- 1. User Management ---
+        // --- 2. User Management ---
         app.post('/users', async (req, res) => {
             const user = req.body;
             const query = { email: user.email };
             const existingUser = await usersCollection.findOne(query);
             if (existingUser) return res.send({ message: 'User already exists', insertedId: null });
-            res.send(await usersCollection.insertOne({ ...user, role: 'user', winCount: 0, createdAt: new Date() }));
+            
+            if (user.password) {
+                const salt = await bcrypt.genSalt(10);
+                user.password = await bcrypt.hash(user.password, salt);
+            }
+            
+            res.send(await usersCollection.insertOne({ 
+                ...user, 
+                role: user.role || 'user', 
+                winCount: 0, 
+                createdAt: new Date() 
+            }));
         });
 
-        app.get('/users',  async (req, res) => {
+        app.get('/users', async (req, res) => {
             res.send(await usersCollection.find().toArray());
         });
 
-        app.get('/users/role/:email',  async (req, res) => {
+        app.get('/users/role/:email', async (req, res) => {
             const user = await usersCollection.findOne({ email: req.params.email });
             res.send({ role: user?.role || 'user' });
         });
 
-        app.patch('/users/role/:id',  async (req, res) => {
+        app.patch('/users/role/:id', async (req, res) => {
             const { role } = req.body;
-            res.send(await usersCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { role: role } }));
+            res.send(await usersCollection.updateOne(
+                { _id: new ObjectId(req.params.id) }, 
+                { $set: { role: role } }
+            ));
         });
 
         app.delete('/users/:id', async (req, res) => {
             res.send(await usersCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
         });
 
-        // // --- 2. Contest Management ---
-        // app.get('/contests', async (req, res) => {
-        //     const email = req.query.email;
-        //     const userEmail = req.decoded.email;
-        //     const user = await usersCollection.findOne({ email: userEmail });
-        //     const isAdmin = user?.role === 'admin';
+        // --- 3. Contest Management ---
+        app.get('/contests', async (req, res) => {
+            const email = req.query.email;
+            let query = {};
+            if (email) query = { creatorEmail: email };
+            res.send(await contestCollection.find(query).toArray());
+        });
 
-        //     let query = {};
-        //     if (email) query = { creatorEmail: email };
-        //     else if (!isAdmin) return res.status(403).send({ message: 'forbidden' });
-        //     res.send(await contestCollection.find(query).toArray());
-        // });
-
-        // --- 2. Contest Management ---
-app.get('/contests', async (req, res) => {
-    try {
-        const email = req.query.email;
-        let query = {};
-
-      
-        if (email) {
-            query = { creatorEmail: email };
-        }
-
-        const contests = await contestCollection.find(query).toArray();
-        res.send(contests);
-    } catch (err) {
-        console.error("Error fetching contests:", err);
-        res.status(500).send({ message: "Internal Server Error" });
-    }
-});
-
-
-        app.post('/contests',  async (req, res) => {
+        app.post('/contests', async (req, res) => {
             const contest = req.body;
-            res.send(await contestCollection.insertOne({ ...contest, participationCount: 0, status: 'Pending', createdAt: new Date() }));
+            res.send(await contestCollection.insertOne({ 
+                ...contest, 
+                participationCount: 0, 
+                status: 'Pending', 
+                createdAt: new Date() 
+            }));
         });
 
         app.get('/contests/:id', async (req, res) => {
             res.send(await contestCollection.findOne({ _id: new ObjectId(req.params.id) }));
         });
 
-        app.patch('/contests/:id',  async (req, res) => {
-            const id =req.params.id;
-            const updatedData =req.body;
-            const result =await contestCollection.updateOne(
+        app.patch('/contests/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedData = req.body;
+            delete updatedData._id; // ID আপডেট করা যায় না
+            res.send(await contestCollection.updateOne(
                 { _id: new ObjectId(id) },
-                { $set: updatedData } );
-                res.send(result);
+                { $set: updatedData }
+            ));
         });
 
-        // Create delete contest API
-
+        
         app.delete('/contests/:id', async (req, res) => {
             const id = req.params.id;
+            const userRole = req.query.role; 
             const query = { _id: new ObjectId(id) };
 
             const contest = await contestCollection.findOne(query);
 
-            if(contest?.status === 'Accepted' || contest?.status === 'Completed'){
-                return res.status(400).send({ message: "Cannot delete an accepted or completed contest." });
-
+            if (userRole !== 'admin') {
+                if (contest?.status === 'Accepted' || contest?.status === 'Completed') {
+                    return res.status(400).send({ message: "Only Admin can delete an accepted or completed contest." });
+                }
             }
-           
+
             const result = await contestCollection.deleteOne(query);
             res.send(result);
         });
 
-        app.patch('/contests/status/:id',  async (req, res) => {
+        app.patch('/contests/status/:id', async (req, res) => {
             const filter = { _id: new ObjectId(req.params.id) };
             res.send(await contestCollection.updateOne(filter, { $set: { status: req.body.status } }));
         });
 
-        // --- 3. Public API ---
-        app.get('/all-contests', async (req, res) => {
-           const { search, category, page, size } = req.query;
-    
-            const pageNumber = parseInt(page) || 0;
-            const limitNumber = parseInt(size) || 6;
+        // --- 4. Public & Popular APIs ---
+ app.get('/all-contests', async (req, res) => {
+  try {
+    const { search, category, sort, page, size } = req.query;
+    const pageNumber = parseInt(page) || 0;
+    const limitNumber = parseInt(size) || 6;
 
-            let query = { status: 'Accepted' };
+    let query = { status: 'Accepted' };
 
-            if (search) {
-                query.contestName = { $regex: search, $options: 'i' };
-            }
-            if (category && category !== 'All') {
-                query.contestCategory = category;
-            }
+    if (search?.trim()) {
+      query.contestName = { $regex: search.trim(), $options: 'i' };
+    }
 
-            try {
-                const totalCount = await contestCollection.countDocuments(query);
+    if (category && category !== 'All') {
+      query.contestCategory = category;
+    }
 
-                
-                const result = await contestCollection.find(query)
-                    .skip(pageNumber * limitNumber)
-                    .limit(limitNumber)
-                    .toArray();
+    const totalCount = await contestCollection.countDocuments(query);
 
-                res.send({
-                    contests: result,
-                    totalPages: Math.ceil(totalCount / limitNumber),
-                    totalCount
-                });
-            } catch (error) {
-                res.status(500).send({ message: "Error fetching contests" });
-            }
-        });
+    let sortOption = { createdAt: -1 };
+    if (sort === 'asc') {
+      sortOption = { contestPrice: 1 };
+    } else if (sort === 'desc') {
+      sortOption = { contestPrice: -1 };
+    }
+
+    const result = await contestCollection
+      .find(query)
+      .sort(sortOption)
+      .skip(pageNumber * limitNumber)
+      .limit(limitNumber)
+      .toArray();
+
+    res.send({
+      contests: result,
+      totalPages: Math.ceil(totalCount / limitNumber),
+      totalCount
+    });
+  } catch (error) {
+    res.status(500).send({ message: "Server Error", error: error.message });
+  }
+});
 
         app.get('/popular-contests', async (req, res) => {
-           const result = await contestCollection.find({ status: 'Accepted' }).sort({ participationCount: -1 }).limit(6).toArray();
-           res.send(result);
+            res.send(await contestCollection.find({ status: 'Accepted' })
+                .sort({ participationCount: -1 }).limit(6).toArray());
         });
 
-        app.get('/leaderboard', async (req, res) => {
-            res.send(await usersCollection.find().sort({ winCount: -1 }).limit(10).toArray());
-        });
+        // --- 5. Payment & Participation ---
+        app.post('/create-checkout-session', async (req, res) => {
+            try {
+                const { cost, contestName, contestId, userEmail } = req.body;
+                const amount = Math.round(parseFloat(cost) * 100);
 
-     // --- 4. Payment (Stripe Checkout Redirect) ---
-        
-        // Session creation for checkout
-        app.post('/create-checkout-session',  async (req, res) => {
-        try {
-            const { cost, contestName, contestId, userEmail } = req.body;
-            const amount = Math.round(parseFloat(cost) * 100);
-            if (isNaN(amount) || amount <= 0) {
-                return res.status(400).send({ message: "Invalid cost amount" });
-            }
-
-            const session = await stripe.checkout.sessions.create({
-                payment_method_types: ['card'],
-                line_items: [{
-                    price_data: {
-                        currency: 'usd',
-                        product_data: { 
-                            name: contestName,
+                const session = await stripe.checkout.sessions.create({
+                    payment_method_types: ['card'],
+                    line_items: [{
+                        price_data: {
+                            currency: 'usd',
+                            product_data: { name: contestName },
+                            unit_amount: amount,
                         },
-                        unit_amount: amount,
-                    },
-                    quantity: 1,
-                }],
-                mode: 'payment',
-                success_url: `${process.env.CLIENT_URL}/dashboard/my-participated?session_id={CHECKOUT_SESSION_ID}&contestId=${contestId}`,
-                cancel_url: `${process.env.CLIENT_URL}/payment/${contestId}`,
-                customer_email: userEmail,
-                metadata: { 
-                    contestId: contestId.toString(), 
-                    contestName: contestName, 
-                    cost: cost.toString() 
-                }
-            });
+                        quantity: 1,
+                    }],
+                    mode: 'payment',
+                    success_url: `${process.env.CLIENT_URL}/dashboard/my-participated?session_id={CHECKOUT_SESSION_ID}&contestId=${contestId}`,
+                    cancel_url: `${process.env.CLIENT_URL}/payment/${contestId}`,
+                    customer_email: userEmail,
+                    metadata: { contestId, contestName, cost: cost.toString() }
+                });
+                res.send({ url: session.url });
+            } catch (error) {
+                res.status(500).send({ message: error.message });
+            }
+        });
 
-            res.send({ url: session.url });
-        } catch (error) {
-            console.error("Stripe Error Details:", error); 
-            res.status(500).send({ message: error.message });
-        }
-});
-//      Payment verification after checkout
         app.post('/verify-payment', async (req, res) => {
             const { sessionId, contestId } = req.body;
             const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -272,11 +227,10 @@ app.get('/contests', async (req, res) => {
             if (session.payment_status === 'paid') {
                 const exists = await participationCollection.findOne({ transactionId: session.payment_intent });
                 if (exists) return res.send({ success: true });
-                 
+
                 const contest = await contestCollection.findOne({ _id: new ObjectId(contestId) });
-                 
                 const paymentInfo = {
-                    contestId: contestId,
+                    contestId,
                     contestName: session.metadata.contestName,
                     transactionId: session.payment_intent,
                     price: session.metadata.cost,
@@ -290,171 +244,38 @@ app.get('/contests', async (req, res) => {
                 await contestCollection.updateOne(
                     { _id: new ObjectId(contestId) },
                     { $inc: { participationCount: 1 } }
-                )
+                );
                 res.send({ success: true });
             } else {
                 res.send({ success: false });
             }
         });
 
-        // // User's Participations
-        // app.get('/my-participations/:email', async (req, res) => {
-        //     const email = req.params.email;
-        //     const decodedEmail = req.decoded.email;
+        app.get('/my-participations/:email', async (req, res) => {
+            res.send(await participationCollection.find({ userEmail: req.params.email }).toArray());
+        });
 
-        //     if (email !== decodedEmail) {
-        //         return res.status(403).send({ message: 'forbidden access' });
-        //     }
-
-        //     const query = { userEmail: email };
-        //     const result = await participationCollection.find(query).toArray();
-        //     res.send(result);
-        // });
-// User's Participations (JWT ছাড়া)
-app.get('/my-participations/:email', async (req, res) => {
-    try {
-        const email = req.params.email;
-
-    
-        const query = { userEmail: email };
-        const result = await participationCollection.find(query).toArray();
-
-        res.send(result);
-    } catch (err) {
-        console.error("Error fetching participations:", err);
-        res.status(500).send({ message: "Internal Server Error" });
-    }
-});
-
-        // Submission API
-        app.patch('/submit-task/:id', async (req, res) => {
-        const id = req.params.id;
-        const { taskLink } = req.body;
-
-        const existing = await participationCollection.findOne({ _id: new ObjectId(id) });
-        if (existing?.submittedTask) {
-            return res.status(400).send({ message: 'Task already submitted' });
-        }    
-       
-        const filter = { _id: new ObjectId(id) };
-        const updatedDoc = {
-        $set: { 
-            submittedTask: taskLink,
-            submissionDate: new Date() 
-        }
-    };
-
-
-        const result = await participationCollection.updateOne(filter, updatedDoc);
-        res.send(result);
-    });
-
-
-    // All Submission
-        app.get('/submissions/:contestId', async (req, res) => {
-        const contestId = req.params.contestId;
-        const query = { 
-            contestId:contestId,
-            submittedTask: {$exists: true}
-        };
-        const result = await participationCollection.find(query).toArray();
-        res.send(result);
-     });
-
-
-
-    // User Winning Contests
-            // app.get('/my-winnings/:email', async (req, res) => {
-            // const email = req.params.email;
-            // const decodedEmail = req.decoded.email;
-
-            // if (email !== decodedEmail) {
-            //     return res.status(403).send({ message: 'forbidden access' });
-            //   }
-
-           
-            //     const query = { winnerEmail: email };
-            //     const result = await contestCollection.find(query).toArray();
-            //     res.send(result);
-            // });
-
-app.get('/my-winnings/:email', async (req, res) => {
-    try {
-        const email = req.params.email;
-
-        const query = { winnerEmail: email };
-        const result = await contestCollection.find(query).toArray();
-
-        res.send(result);
-    } catch (err) {
-        console.error("Error fetching winnings:", err);
-        res.status(500).send({ message: "Internal Server Error" });
-    }
-});
-
-
-        // --- 5. Winner Declaration ---
-       app.patch('/make-winner/:participationId', async (req, res) => {
+        // --- 6. Winner & Leaderboard ---
+        app.patch('/make-winner/:participationId', async (req, res) => {
             const { contestId, winnerEmail, winnerName } = req.body;
-
-   
             const contest = await contestCollection.findOne({ _id: new ObjectId(contestId) });
-            if (contest?.status === 'Completed') {
-                return res.status(400).send({ message: "Winner already declared for this contest!" });
-            }
+            if (contest?.status === 'Completed') return res.status(400).send({ message: "Winner already declared!" });
 
-           
             await contestCollection.updateOne(
                 { _id: new ObjectId(contestId) },
-                { 
-                    $set: { 
-                        winnerEmail: winnerEmail, 
-                        winnerName: winnerName,
-                        status: 'Completed' 
-                    } 
-                }
+                { $set: { winnerEmail, winnerName, status: 'Completed' } }
             );
-
-            
-            await usersCollection.updateOne(
-                { email: winnerEmail },
-                { $inc: { winCount: 1 } }
-            );
-
+            await usersCollection.updateOne({ email: winnerEmail }, { $inc: { winCount: 1 } });
             res.send({ success: true });
-});
-
-    // Leaderboard API
-    app.get('/leaderboard', async (req, res) => {
-    try {
-        const page = parseInt(req.query.page) || 0;
-        const size = parseInt(req.query.size) || 10;
-        const skip = page * size;
-
-         const query = { winCount: { $gt: 0 } }; 
-
-        const totalCount = await usersCollection.countDocuments(query);
-
-        const winners = await usersCollection
-            .find(query)
-            .sort({ winCount: -1 }) 
-            .skip(skip)
-            .limit(size)
-            .toArray();
-
-        res.send({
-            winners,
-            totalCount,
-            totalPages: Math.ceil(totalCount / size),
-            currentPage: page
         });
-    } catch (err) {
-        res.status(500).send({ message: "Leaderboard error", error: err.message });
-    }
-});
-        
 
-        console.log("Database connected and listening!");
+        app.get('/leaderboard', async (req, res) => {
+            const result = await usersCollection.find({ winCount: { $gt: 0 } })
+                .sort({ winCount: -1 }).limit(10).toArray();
+            res.send(result);
+        });
+
+        console.log("Database connected successfully!");
     } finally { }
 }
 run().catch(console.dir);
