@@ -2,7 +2,7 @@ const express = require('express');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
+// const bcrypt = require('bcryptjs');
 require('dotenv').config();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
@@ -49,24 +49,30 @@ async function run() {
         });
 
         // --- 2. User Management ---
-        app.post('/users', async (req, res) => {
-            const user = req.body;
-            const query = { email: user.email };
-            const existingUser = await usersCollection.findOne(query);
-            if (existingUser) return res.send({ message: 'User already exists', insertedId: null });
-            
-            if (user.password) {
-                const salt = await bcrypt.genSalt(10);
-                user.password = await bcrypt.hash(user.password, salt);
-            }
-            
-            res.send(await usersCollection.insertOne({ 
-                ...user, 
-                role: user.role || 'user', 
-                winCount: 0, 
-                createdAt: new Date() 
-            }));
-        });
+// --- 2. User Management ---
+app.post('/users', async (req, res) => {
+  try {
+    const user = req.body;
+    const query = { email: user.email };
+    const existingUser = await usersCollection.findOne(query);
+
+    if (existingUser) {
+      return res.send({ message: 'User already exists', insertedId: null });
+    }
+
+    const result = await usersCollection.insertOne({
+      ...user,
+      role: user.role || 'user',
+      winCount: 0,
+      createdAt: new Date()
+    });
+
+    res.send(result);
+  } catch (error) {
+    console.error("Error creating user:", error);
+    res.status(500).send({ message: "Server Error", error: error.message });
+  }
+});
 
         app.get('/users', async (req, res) => {
             res.send(await usersCollection.find().toArray());
@@ -114,7 +120,7 @@ async function run() {
         app.patch('/contests/:id', async (req, res) => {
             const id = req.params.id;
             const updatedData = req.body;
-            delete updatedData._id; // ID আপডেট করা যায় না
+            delete updatedData._id; 
             res.send(await contestCollection.updateOne(
                 { _id: new ObjectId(id) },
                 { $set: updatedData }
@@ -145,47 +151,67 @@ async function run() {
         });
 
         // --- 4. Public & Popular APIs ---
- app.get('/all-contests', async (req, res) => {
-  try {
-    const { search, category, sort, page, size } = req.query;
-    const pageNumber = parseInt(page) || 0;
-    const limitNumber = parseInt(size) || 6;
+app.get('/all-contests', async (req, res) => {
+    try {
+        const { search, category, sort, page, size } = req.query;
+        const pageNumber = Math.max(0, parseInt(page) - 1) || 0;
+        const limitNumber = parseInt(size) || 6;
 
-    let query = { status: 'Accepted' };
+        let query = { status: 'Accepted' };
 
-    if (search?.trim()) {
-      query.contestName = { $regex: search.trim(), $options: 'i' };
+        if (search?.trim()) {
+            query.contestName = { $regex: search.trim(), $options: 'i' };
+        }
+        if (category && category !== 'All') {
+            query.contestCategory = category;
+        }
+        let sortOption = { createdAt: -1 }; 
+        if (sort === 'asc') sortOption = { contestPrice: 1 };
+        if (sort === 'desc') sortOption = { contestPrice: -1 };
+
+        const totalCount = await contestCollection.countDocuments(query);
+        const result = await contestCollection
+            .find(query)
+            .sort(sortOption)
+            .skip(pageNumber * limitNumber)
+            .limit(limitNumber)
+            .toArray();
+
+        res.send({
+            contests: result,
+            totalPages: Math.ceil(totalCount / limitNumber),
+            totalCount
+        });
+    } catch (error) {
+        res.status(500).send({ message: "Error", error: error.message });
     }
-
-    if (category && category !== 'All') {
-      query.contestCategory = category;
-    }
-
-    const totalCount = await contestCollection.countDocuments(query);
-
-    let sortOption = { createdAt: -1 };
-    if (sort === 'asc') {
-      sortOption = { contestPrice: 1 };
-    } else if (sort === 'desc') {
-      sortOption = { contestPrice: -1 };
-    }
-
-    const result = await contestCollection
-      .find(query)
-      .sort(sortOption)
-      .skip(pageNumber * limitNumber)
-      .limit(limitNumber)
-      .toArray();
-
-    res.send({
-      contests: result,
-      totalPages: Math.ceil(totalCount / limitNumber),
-      totalCount
-    });
-  } catch (error) {
-    res.status(500).send({ message: "Server Error", error: error.message });
-  }
 });
+
+
+// Statistics API
+app.get('/get-stats', async (req, res) => {
+    try {
+        // ১. মোট পার্টিসিপেশন (পেমেন্ট বা এনরোলমেন্ট কালেকশন থেকে)
+        const totalParticipants = await paymentCollection.countDocuments();
+
+        // ২. মোট এক্টিভ কনটেস্ট (যেগুলো স্ট্যাটাস Accepted)
+        const totalContests = await contestCollection.countDocuments({ status: 'Accepted' });
+
+        // ৩. মোট বিজয়ী (যেখানে winnerName ফিল্ডটি আছে)
+        const totalWinners = await contestCollection.countDocuments({ 
+            winnerName: { $exists: true, $ne: null } 
+        });
+
+        res.send({
+            totalParticipants,
+            totalContests,
+            totalWinners
+        });
+    } catch (error) {
+        res.status(500).send({ message: "Stats fetching failed", error: error.message });
+    }
+});
+
 
         app.get('/popular-contests', async (req, res) => {
             res.send(await contestCollection.find({ status: 'Accepted' })
