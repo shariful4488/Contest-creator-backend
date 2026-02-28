@@ -189,17 +189,13 @@ app.get('/all-contests', async (req, res) => {
 
 
 // Statistics API
+// Statistics API (Fixed Variable Names)
 app.get('/get-stats', async (req, res) => {
     try {
-        // ১. মোট পার্টিসিপেশন (পেমেন্ট বা এনরোলমেন্ট কালেকশন থেকে)
-        const totalParticipants = await paymentCollection.countDocuments();
-
-        // ২. মোট এক্টিভ কনটেস্ট (যেগুলো স্ট্যাটাস Accepted)
+        const totalParticipants = await participationCollection.countDocuments();
         const totalContests = await contestCollection.countDocuments({ status: 'Accepted' });
-
-        // ৩. মোট বিজয়ী (যেখানে winnerName ফিল্ডটি আছে)
         const totalWinners = await contestCollection.countDocuments({ 
-            winnerName: { $exists: true, $ne: null } 
+            winnerName: { $exists: true, $ne: null, $ne: "" } 
         });
 
         res.send({
@@ -208,6 +204,7 @@ app.get('/get-stats', async (req, res) => {
             totalWinners
         });
     } catch (error) {
+        console.error("Stats error:", error);
         res.status(500).send({ message: "Stats fetching failed", error: error.message });
     }
 });
