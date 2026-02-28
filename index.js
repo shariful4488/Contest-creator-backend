@@ -23,6 +23,23 @@ const client = new MongoClient(uri, {
     }
 });
 
+
+// JWT Authentication Middleware
+
+const verifyToken = (req, res, next) => {
+    if (!req.headers.authorization) {
+        return res.status(401).send({ message: 'unauthorized access' });
+    }
+    const token = req.headers.authorization.split(' ')[1];
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ message: 'unauthorized access' });
+        }
+        req.decoded = decoded;
+        next();
+    });
+};
+
 async function run() {
     try {
         const database = client.db("contest_create");
@@ -30,8 +47,16 @@ async function run() {
         const contestCollection = database.collection("contests");
         const participationCollection = database.collection("participations");
 
+
+        // --- 0. Auth Related API (JWT) ---
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '100d' });
+            res.send({ token });
+        });
+
         // --- 1. Admin Statistics ---
-        app.get('/admin-stats', async (req, res) => {
+        app.get('/admin-stats', verifyToken, async (req, res) => {
             try {
                 const users = await usersCollection.estimatedDocumentCount();
                 const contests = await contestCollection.estimatedDocumentCount();
@@ -51,39 +76,40 @@ async function run() {
         // --- 2. User Management ---
 // --- 2. User Management ---
 app.post('/users', async (req, res) => {
-  try {
-    const user = req.body;
-    const query = { email: user.email };
-    const existingUser = await usersCollection.findOne(query);
+            try {
+                const user = req.body;
+                const query = { email: user.email };
+                const existingUser = await usersCollection.findOne(query);
 
-    if (existingUser) {
-      return res.send({ message: 'User already exists', insertedId: null });
-    }
+                if (existingUser) {
+                    return res.send({ message: 'User already exists', insertedId: null });
+                }
 
-    const result = await usersCollection.insertOne({
-      ...user,
-      role: user.role || 'user',
-      winCount: 0,
-      createdAt: new Date()
-    });
+                // Password hashing if password exists (Manual Login এর জন্য)
+                let finalUser = { ...user, role: user.role || 'user', winCount: 0, createdAt: new Date() };
+                if (user.password) {
+                    const salt = await bcrypt.genSalt(10);
+                    finalUser.password = await bcrypt.hash(user.password, salt);
+                }
 
-    res.send(result);
-  } catch (error) {
-    console.error("Error creating user:", error);
-    res.status(500).send({ message: "Server Error", error: error.message });
-  }
-});
+                const result = await usersCollection.insertOne(finalUser);
+                res.send(result);
+            } catch (error) {
+                console.error("Error creating user:", error);
+                res.status(500).send({ message: "Server Error", error: error.message });
+            }
+        });
 
-        app.get('/users', async (req, res) => {
+        app.get('/users', verifyToken, async (req, res) => {
             res.send(await usersCollection.find().toArray());
         });
 
-        app.get('/users/role/:email', async (req, res) => {
+        app.get('/users/role/:email', verifyToken, async (req, res) => {
             const user = await usersCollection.findOne({ email: req.params.email });
             res.send({ role: user?.role || 'user' });
         });
 
-        app.patch('/users/role/:id', async (req, res) => {
+        app.patch('/users/role/:id', verifyToken, async (req, res) => {
             const { role } = req.body;
             res.send(await usersCollection.updateOne(
                 { _id: new ObjectId(req.params.id) }, 
@@ -91,7 +117,7 @@ app.post('/users', async (req, res) => {
             ));
         });
 
-        app.delete('/users/:id', async (req, res) => {
+        app.delete('/users/:id', verifyToken, async (req, res) => {
             res.send(await usersCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
         });
 
@@ -103,7 +129,7 @@ app.post('/users', async (req, res) => {
             res.send(await contestCollection.find(query).toArray());
         });
 
-        app.post('/contests', async (req, res) => {
+        app.post('/contests', verifyToken, async (req, res) => {
             const contest = req.body;
             res.send(await contestCollection.insertOne({ 
                 ...contest, 
@@ -117,7 +143,7 @@ app.post('/users', async (req, res) => {
             res.send(await contestCollection.findOne({ _id: new ObjectId(req.params.id) }));
         });
 
-        app.patch('/contests/:id', async (req, res) => {
+        app.patch('/contests/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const updatedData = req.body;
             delete updatedData._id; 
@@ -128,7 +154,7 @@ app.post('/users', async (req, res) => {
         });
 
         
-        app.delete('/contests/:id', async (req, res) => {
+        app.delete('/contests/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const userRole = req.query.role; 
             const query = { _id: new ObjectId(id) };
@@ -145,7 +171,7 @@ app.post('/users', async (req, res) => {
             res.send(result);
         });
 
-        app.patch('/contests/status/:id', async (req, res) => {
+        app.patch('/contests/status/:id', verifyToken,async (req, res) => {
             const filter = { _id: new ObjectId(req.params.id) };
             res.send(await contestCollection.updateOne(filter, { $set: { status: req.body.status } }));
         });
@@ -189,7 +215,7 @@ app.get('/all-contests', async (req, res) => {
 
 
 // Statistics API
-// Statistics API (Fixed Variable Names)
+
 app.get('/get-stats', async (req, res) => {
     try {
         const totalParticipants = await participationCollection.countDocuments();
@@ -216,7 +242,7 @@ app.get('/get-stats', async (req, res) => {
         });
 
         // --- 5. Payment & Participation ---
-        app.post('/create-checkout-session', async (req, res) => {
+        app.post('/create-checkout-session', verifyToken, async (req, res) => {
             try {
                 const { cost, contestName, contestId, userEmail } = req.body;
                 const amount = Math.round(parseFloat(cost) * 100);
@@ -243,7 +269,7 @@ app.get('/get-stats', async (req, res) => {
             }
         });
 
-        app.post('/verify-payment', async (req, res) => {
+        app.post('/verify-payment', verifyToken, async (req, res) => {
             const { sessionId, contestId } = req.body;
             const session = await stripe.checkout.sessions.retrieve(sessionId);
 
@@ -274,12 +300,12 @@ app.get('/get-stats', async (req, res) => {
             }
         });
 
-        app.get('/my-participations/:email', async (req, res) => {
+        app.get('/my-participations/:email', verifyToken, async (req, res) => {
             res.send(await participationCollection.find({ userEmail: req.params.email }).toArray());
         });
 
     // Task Submission API
-app.patch('/submit-task/:id', async (req, res) => {
+app.patch('/submit-task/:id', verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
     const { taskLink } = req.body;
@@ -315,7 +341,7 @@ app.patch('/submit-task/:id', async (req, res) => {
      
 // Submission Review API
 
-    app.get('/submissions/:id', async (req, res) => {
+    app.get('/submissions/:id', verifyToken, async (req, res) => {
         try {
             const contestId = req.params.id;
             const query = { 
@@ -333,7 +359,7 @@ app.patch('/submit-task/:id', async (req, res) => {
 
 
         // --- 6. Winner & Leaderboard ---
-        app.patch('/make-winner/:participationId', async (req, res) => {
+        app.patch('/make-winner/:participationId', verifyToken, async (req, res) => {
             const { contestId, winnerEmail, winnerName } = req.body;
             const contest = await contestCollection.findOne({ _id: new ObjectId(contestId) });
             if (contest?.status === 'Completed') return res.status(400).send({ message: "Winner already declared!" });
