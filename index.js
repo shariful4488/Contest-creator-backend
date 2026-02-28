@@ -278,6 +278,44 @@ app.get('/get-stats', async (req, res) => {
             res.send(await participationCollection.find({ userEmail: req.params.email }).toArray());
         });
 
+    // Task Submission API
+app.patch('/submit-task/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { taskLink } = req.body;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ success: false, message: "Invalid ID format" });
+    }
+
+    const result = await participationCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          submittedTask: taskLink, 
+          status: 'Submitted', 
+          submittedAt: new Date() 
+        } 
+      }
+    );
+
+    if (result.matchedCount > 0) {
+      res.send({ 
+        success: true, 
+        modifiedCount: result.modifiedCount,
+        message: "Task updated successfully" 
+      });
+    } else {
+      res.status(404).send({ success: false, message: "Participation record not found" });
+    }
+  } catch (error) {
+    console.error("Task submission error:", error);
+    res.status(500).send({ success: false, message: "Server error", error: error.message });
+  }
+});
+     
+
+
+
         // --- 6. Winner & Leaderboard ---
         app.patch('/make-winner/:participationId', async (req, res) => {
             const { contestId, winnerEmail, winnerName } = req.body;
