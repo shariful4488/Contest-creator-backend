@@ -346,11 +346,32 @@ app.patch('/submit-task/:id', async (req, res) => {
             res.send({ success: true });
         });
 
-        app.get('/leaderboard', async (req, res) => {
-            const result = await usersCollection.find({ winCount: { $gt: 0 } })
-                .sort({ winCount: -1 }).limit(10).toArray();
-            res.send(result);
+    app.get('/leaderboard', async (req, res) => {
+    try {
+        const { page = 0, size = 10 } = req.query;
+        const pageNumber = parseInt(page);
+        const limitNumber = parseInt(size);
+
+      
+        const totalCount = await usersCollection.countDocuments({ winCount: { $gt: 0 } });
+
+        const result = await usersCollection
+        .find({ winCount: { $gt: 0 } })
+        .sort({ winCount: -1 })
+        .skip(pageNumber * limitNumber)
+        .limit(limitNumber)
+        .toArray();
+
+        res.send({
+        winners: result,
+        totalPages: Math.ceil(totalCount / limitNumber),
+        totalCount
         });
+    } catch (error) {
+        res.status(500).send({ message: "Leaderboard fetch failed", error: error.message });
+    }
+    });
+
 
         console.log("Database connected successfully!");
     } finally { }
