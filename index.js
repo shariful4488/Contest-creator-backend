@@ -84,8 +84,6 @@ app.post('/users', async (req, res) => {
                 if (existingUser) {
                     return res.send({ message: 'User already exists', insertedId: null });
                 }
-
-                // Password hashing if password exists (Manual Login এর জন্য)
                 let finalUser = { ...user, role: user.role || 'user', winCount: 0, createdAt: new Date() };
                 if (user.password) {
                     const salt = await bcrypt.genSalt(10);
@@ -120,6 +118,15 @@ app.post('/users', async (req, res) => {
         app.delete('/users/:id', verifyToken, async (req, res) => {
             res.send(await usersCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
         });
+
+        app.patch('/users/update/:email', async (req, res) => {
+        const email = req.params.email;
+        const { name, image } = req.body;
+        const filter = { email: email };
+        const updatedDoc = { $set: { name, image } };
+        const result = await usersCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+});
 
         // --- 3. Contest Management ---
         app.get('/contests', async (req, res) => {
