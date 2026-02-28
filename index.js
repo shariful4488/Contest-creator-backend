@@ -313,7 +313,23 @@ app.patch('/submit-task/:id', async (req, res) => {
   }
 });
      
+// Submission Review API
 
+    app.get('/submissions/:id', async (req, res) => {
+        try {
+            const contestId = req.params.id;
+            const query = { 
+                contestId: contestId,
+                submittedTask: { $exists: true, $ne: null } 
+            };
+            
+            const result = await participationCollection.find(query).toArray();
+            res.send(result);
+        } catch (error) {
+            console.error("Fetch submissions error:", error);
+            res.status(500).send({ message: "Error fetching submissions" });
+        }
+    });
 
 
         // --- 6. Winner & Leaderboard ---
